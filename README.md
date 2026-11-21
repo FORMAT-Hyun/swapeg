@@ -1,33 +1,87 @@
 # Swapeg
 
-파일을 넣고, 바꿀 형식을 고른 뒤, [바꾸기]만 누르면 되는 ffmpeg GUI (Python + PySide6).
-화질은 원본 그대로 유지합니다 (가능하면 재인코딩 없이 복사, 필요하면 고화질 인코딩).
+**Drop a file, pick a format, convert.** Swapeg is a simple Windows app that converts video, audio and images with FFmpeg - no commands, no settings maze, and the original quality is kept.
 
-## 실행
-`실행.bat`을 더블클릭하세요. 가상환경(.venv)이 없으면 만들고, `bin/`에 ffmpeg가 없으면 자동으로 내려받아 설치합니다(SHA-256 검증).
+![Swapeg - pick a format](docs/images/pick.png)
 
-수동 실행:
-```powershell
-.\.venv\Scripts\python src\app.py
-```
+## Features
 
-## 지원 형식
-입력은 ffmpeg가 읽을 수 있는 파일이면 확장자와 무관하게 모두 받습니다.
+- **Three steps**: drop your files, click the format you want, press Convert.
+- **Original quality by default**: when the new format can hold the original streams, Swapeg copies them without re-encoding (lossless and fast). Otherwise it re-encodes at visually lossless settings and keeps the resolution and frame rate.
+- **54 output formats**: 20 video, 18 audio and 17 image (GIF is both a video and an image format). Input can be anything FFmpeg can read.
+- **Preview** of the source file before converting and of the result when it is done.
+- **Batch conversion** with an overall progress bar and a Cancel button.
+- **Search box** to find a format quickly (try `mp3`, `video` or `image` - the app labels are in Korean, so `영상`, `오디오` and `이미지` also work).
+- **Settings** for the save location, quality level, and what happens after conversion.
+- **FFmpeg is set up for you**: if it is missing, Swapeg downloads it on first run and verifies its checksum.
 
-- 영상(20): MP4, MKV, WebM, MOV, AVI, M4V, WMV, ASF, FLV, 3GP, 3G2, TS, MTS, M2TS, MPG, MPEG, VOB, OGV, GIF, APNG
-- 오디오(18, 영상에서 소리 추출 포함): MP3, WAV, FLAC, M4A, AAC, OGG, OGA, OPUS, WMA, AIFF, AIF, AC3, MP2, MKA, AU, CAF, WV, TTA
-- 이미지(17): PNG, JPG, JPEG, WebP, BMP, TIFF, TIF, ICO, TGA, PPM, JP2, PCX, SGI, QOI, EXR, AVIF
+## Download and install
 
-## 테스트
-```powershell
-.\.venv\Scripts\python -m pytest tests
-```
-(`bin/`에 ffmpeg가 있으면 실제 변환 테스트까지 실행합니다.)
+Get the latest version from the [Releases page](https://github.com/FORMAT-Hyun/swapeg/releases/latest).
 
-## 배포(exe)
-```powershell
-powershell -ExecutionPolicy Bypass -File tools\build.ps1
-```
-`releases\Swapeg-<버전>-win64.zip`(와 `.sha256`)이 만들어집니다. 버전은 `src/version.py`에서 바꿉니다.
-(아이콘 다시 만들기: `.\.venv\Scripts\python tools\make_icon.py`)
-FFmpeg 빌드의 라이선스(GPL)를 확인하고 배포 시 고지하세요.
+| File | What it is |
+|---|---|
+| `Swapeg-<version>-Setup.exe` | **Recommended.** Installer with Start menu and optional desktop shortcut. Installs for the current user, no administrator rights needed. |
+| `Swapeg-<version>-win64.zip` | Portable version. Unzip anywhere and run `Swapeg.exe`. |
+| `SHA256SUMS.txt` | Checksums to verify your download. |
+
+**Requirements:** Windows 10 or 11 (64-bit) and an internet connection the first time, to fetch FFmpeg.
+
+> **Windows SmartScreen warning?** Swapeg is not code-signed yet, so Windows may show "Windows protected your PC". Click **More info** and then **Run anyway**.
+
+### First run
+
+If FFmpeg is not found, Swapeg asks whether to download it (about 100 MB, from gyan.dev). Click **Yes**. It is checked against its published SHA-256 checksum and saved in the `bin` folder next to the app. You can also point Swapeg to an existing FFmpeg in **Settings**.
+
+## How to use
+
+1. **Add files.** Drag them anywhere onto the window, or click the drop area to browse. You can add many files at once.
+2. **Pick a format.** The formats that make sense for your files are shown as boxes, grouped into Video, Audio and Image. Use the search box to narrow them down. Your last choice is remembered.
+3. **Press Convert.** A progress bar shows the status. When it finishes you get a preview of the result and buttons to open the folder or convert something else.
+
+By default the converted file is saved next to the original with the same name and the new extension. If that name is taken, Swapeg adds `_converted` (or a number) - **your original files are never overwritten or deleted.**
+
+![Converting](docs/images/convert.png)
+
+## Supported formats
+
+| Type | Output formats |
+|---|---|
+| Video | MP4, MKV, WebM, MOV, AVI, M4V, WMV, ASF, FLV, 3GP, 3G2, TS, MTS, M2TS, MPG, MPEG, VOB, OGV, GIF, APNG |
+| Audio | MP3, WAV, FLAC, M4A, AAC, OGG, OGA, OPUS, WMA, AIFF, AIF, AC3, MP2, MKA, AU, CAF, WV, TTA |
+| Image | PNG, JPG, JPEG, WebP, GIF, BMP, TIFF, TIF, ICO, TGA, PPM, JP2, PCX, SGI, QOI, EXR, AVIF |
+
+What you can convert to depends on what you drop in:
+
+- **Video files** can become other video formats, an animated GIF, or just the audio track (any audio format).
+- **Audio files** can become other audio formats.
+- **Image files** can become other image formats, including a still GIF.
+- **GIF files** can also become a still image (the first frame).
+- The file's own format is not offered (an MP4 is never converted to MP4).
+
+## Settings
+
+Open **Settings** (top right) to change:
+
+- **Save location** - next to the original file (default) or a folder you choose.
+- **Quality** - *Keep original quality* (default), *Balanced* (much smaller files, hardly any visible difference) or *Small size* (smallest files, slight quality loss). Lossless formats such as FLAC, WAV and PNG are never degraded.
+- **After conversion** - optionally open the result folder automatically.
+- **FFmpeg** - see which FFmpeg is used, choose another folder, or reinstall it.
+
+![Settings](docs/images/settings.png)
+
+## Notes and limits
+
+- The app interface is currently in Korean.
+- Converting to a very different format may re-encode, which takes longer for large videos. Copying (no re-encode) is near-instant.
+- Transparent images saved as JPG get a white background, because JPG has no transparency.
+- GIF output is limited to 720 px wide and 15 fps to keep files a sensible size.
+- Some rare codecs or damaged files cannot be converted; the result screen shows FFmpeg's error message for the file.
+
+## Uninstall
+
+Use **Settings > Apps** in Windows (installer version), or just delete the folder (portable version). Uninstalling also removes the downloaded FFmpeg and the app settings.
+
+## Credits and licenses
+
+Swapeg is a graphical front end for [FFmpeg](https://ffmpeg.org/). FFmpeg is downloaded on first run from the release builds published by [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), which are licensed under the GPL. The interface is built with [Qt for Python (PySide6)](https://doc.qt.io/qtforpython-6/), licensed under the LGPL. Swapeg is not affiliated with the FFmpeg project.
