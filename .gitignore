@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+*.spec
+
+# 자동 설치되는 ffmpeg 바이너리는 커밋하지 않음
+bin/*
+!bin/.gitkeep
