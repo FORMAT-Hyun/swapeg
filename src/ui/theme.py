@@ -57,6 +57,9 @@ QPushButton[fmt="true"]:checked {{
 }}
 QScrollArea {{ background: transparent; border: none; }}
 QWidget#GridInner {{ background: transparent; }}
+QLabel#DropHint {{ color: {MUTED}; font-size: 10pt; }}
+QDialog QGroupBox {{ margin-top: 14px; }}
+QRadioButton, QCheckBox {{ spacing: 8px; padding: 2px 0; }}
 QLabel#DropGuide {{ color: {MUTED}; font-size: 13pt; }}
 QPushButton#DropZone:hover QLabel#DropGuide {{ color: {GREEN}; }}
 QPushButton#DropZone {{

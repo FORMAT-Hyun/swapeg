@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QSettings, QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar,
     QProgressDialog, QPushButton, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
@@ -15,8 +15,10 @@ from core.installer import InstallWorker
 from core.probe import MediaInfo, probe
 from core.runner import Job, JobRunner
 from core.thumb import Thumbs
+from ui import icons
 from ui.format_grid import FormatGrid
 from ui.preview import PreviewCard
+from ui.settings_dialog import SettingsDialog, load as load_settings
 
 PAGE_DROP, PAGE_PICK, PAGE_RUN = 0, 1, 2
 
@@ -28,14 +30,15 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FFmpeg 변환기")
+        self.setWindowTitle("Swapeg")
         self.resize(820, 600)
         self.setMinimumSize(560, 460)
         self.setAcceptDrops(True)
 
-        self.settings = QSettings("FFmpegGUI", "converter")
-        self.ffmpeg = find_tool("ffmpeg")
-        self.ffprobe = find_tool("ffprobe")
+        self.settings = QSettings("Swapeg", "Swapeg")
+        custom = self.settings.value("ffmpeg_dir", None)  # 설정에서 직접 지정한 ffmpeg 폴더
+        self.ffmpeg = find_tool("ffmpeg", custom)
+        self.ffprobe = find_tool("ffprobe", custom)
         self.items: list[dict] = []        # {path, info, kind}
         self._job_files: list[dict] = []
         self._results: list[tuple[str, bool, str]] = []   # (파일명, 성공, 메시지)
@@ -74,36 +77,82 @@ class MainWindow(QMainWindow):
         outer = QVBoxLayout(w)
         outer.setContentsMargins(28, 22, 28, 22)
         outer.setSpacing(14)
-        title = QLabel("FFmpeg 변환기")
+        head = QHBoxLayout()
+        logo = QLabel()
+        logo.setPixmap(QPixmap(str(app_dir() / "assets" / "icon.png")).scaled(
+            34, 34, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        title = QLabel("Swapeg")
         title.setObjectName("Title")
-        outer.addWidget(title)
+        head.addWidget(logo)
+        head.addWidget(title)
+        head.addStretch(1)
+        head.addWidget(self._gear_button())
+        outer.addLayout(head)
         self.drop = QPushButton()
         self.drop.setObjectName("DropZone")
         self.drop.setCursor(Qt.PointingHandCursor)
         self.drop.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # 창 전체를 덮는다
         self.drop.clicked.connect(self._add_dialog)
         inner = QVBoxLayout(self.drop)
+        inner.addStretch(1)
+        art = QLabel()
+        art.setPixmap(icons.pixmap("upload", icons.GREEN, 84, 1.6))
         self.drop_guide = QLabel(self.DROP_GUIDE)
         self.drop_guide.setObjectName("DropGuide")
-        self.drop_guide.setAlignment(Qt.AlignCenter)
-        self.drop_guide.setAttribute(Qt.WA_TransparentForMouseEvents)  # 클릭은 구역 전체가 받는다
+        # 지원하는 종류를 아이콘으로 안내
+        kinds = QHBoxLayout()
+        kinds.addStretch(1)
+        for kind, name in (("video", "영상"), ("audio", "오디오"), ("image", "이미지")):
+            ic = QLabel()
+            ic.setPixmap(icons.pixmap(kind, icons.MUTED, 20, 1.8))
+            tx = QLabel(name)
+            tx.setObjectName("DropHint")
+            kinds.addWidget(ic)
+            kinds.addWidget(tx)
+            kinds.addSpacing(14)
+        more = QLabel(f"{len(simple.TARGET_KIND)}개 형식 지원 · 원본 화질 유지")
+        more.setObjectName("DropHint")
+        kinds.addWidget(more)
+        kinds.addStretch(1)
+        for lab in (art, self.drop_guide):
+            lab.setAlignment(Qt.AlignCenter)
+        inner.addWidget(art)
         inner.addWidget(self.drop_guide)
+        inner.addSpacing(10)
+        inner.addLayout(kinds)
+        inner.addStretch(1)
+        # 클릭은 구역 전체가 받도록 안쪽 위젯은 마우스 이벤트를 통과시킨다
+        for child in self.drop.findChildren(QLabel):
+            child.setAttribute(Qt.WA_TransparentForMouseEvents)
         outer.addWidget(self.drop, 1)
         return w
+
+    def _gear_button(self) -> QPushButton:
+        b = QPushButton("설정")
+        b.setProperty("ghost", True)
+        b.setIcon(icons.icon("gear"))
+        b.setIconSize(QSize(18, 18))
+        b.setCursor(Qt.PointingHandCursor)
+        b.clicked.connect(self._open_settings)
+        return b
 
     def _build_pick_page(self) -> QWidget:
         w, v = self._page()
         top = QHBoxLayout()
-        back = QPushButton("← 처음으로")
+        back = QPushButton("처음으로")
         back.setProperty("ghost", True)
+        back.setIcon(icons.icon("back"))
+        back.setIconSize(QSize(18, 18))
         back.clicked.connect(self._reset)
         self.search = QLineEdit()
         self.search.setPlaceholderText("검색  (예: mp3, 영상, 이미지)")
         self.search.setClearButtonEnabled(True)
         self.search.setFixedWidth(240)
+        self.search.addAction(icons.icon("search", icons.MUTED), QLineEdit.LeadingPosition)
         top.addWidget(back)
         top.addStretch(1)
         top.addWidget(self.search)
+        top.addWidget(self._gear_button())
         v.addLayout(top)
 
         self.grid = FormatGrid()
@@ -125,8 +174,11 @@ class MainWindow(QMainWindow):
 
         bottom = QHBoxLayout()
         b_more = QPushButton("파일 추가")
+        b_more.setIcon(icons.icon("plus"))
         b_more.clicked.connect(self._add_dialog)
         self.btn_go = QPushButton("변환")
+        self.btn_go.setIcon(icons.icon("swap", icons.MINT_DARK))
+        self.btn_go.setIconSize(QSize(20, 20))
         self.btn_go.setProperty("primary", True)
         self.btn_go.setMinimumWidth(150)
         self.btn_go.clicked.connect(self._start)
@@ -175,9 +227,12 @@ class MainWindow(QMainWindow):
         btns = QHBoxLayout()
         btns.addStretch(1)
         self.btn_cancel = QPushButton("취소")
+        self.btn_cancel.setIcon(icons.icon("close", icons.MUTED))
         self.btn_cancel.clicked.connect(self._cancel)
         self.btn_open = QPushButton("폴더 열기")
+        self.btn_open.setIcon(icons.icon("folder"))
         self.btn_again = QPushButton("새로 변환하기")
+        self.btn_again.setIcon(icons.icon("swap", icons.MINT_DARK))
         self.btn_again.setProperty("primary", True)
         self.btn_open.clicked.connect(self._open_folder)
         self.btn_again.clicked.connect(self._reset)
@@ -266,6 +321,14 @@ class MainWindow(QMainWindow):
         target = self.grid.current()
         if not target or not self.items:
             return
+        cfg = load_settings(self.settings)
+        out_dir = cfg["out_dir"] if cfg["out_mode"] == "custom" and cfg["out_dir"] else None
+        if out_dir:
+            try:
+                Path(out_dir).mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                QMessageBox.warning(self, "저장 위치", f"저장 폴더를 만들 수 없습니다.\n{e}")
+                return
         jobs, self._job_files, self._results, self._outs = [], [], [], []
         self._ok_outs: list[str] = []
         for it in self.items:
@@ -277,8 +340,9 @@ class MainWindow(QMainWindow):
             if not simple.can_convert(it["kind"], simple.ext_of(src), target):
                 self._results.append((name, False, "이 형식으로는 바꿀 수 없어요"))
                 continue
-            out = simple.output_path(src, target)
-            args = simple.build_args(self.ffmpeg, src, str(out), target, it["info"], it["kind"])
+            out = simple.output_path(src, target, out_dir)
+            args = simple.build_args(self.ffmpeg, src, str(out), target, it["info"], it["kind"],
+                                     cfg["quality"])
             jobs.append(Job(args, str(out), it["info"].duration))
             self._job_files.append(it)
             self._outs.append(str(out))
@@ -356,6 +420,9 @@ class MainWindow(QMainWindow):
             label = Path(out).name + (f" 외 {len(self._ok_outs) - 1}개" if len(self._ok_outs) > 1 else "")
             self.run_cap.setText("결과 미리보기")
             self.run_card.show_file(out, label, "", min(dur * 0.2, 10.0) if dur else 0.0)
+            self._last_dir = str(Path(out).parent)   # [폴더 열기]는 결과가 저장된 폴더를 연다
+            if load_settings(self.settings)["open_after"] and not self._cancelled:
+                self._open_folder()
         else:
             self.run_cap.setText("")
 
@@ -363,13 +430,33 @@ class MainWindow(QMainWindow):
         if self._last_dir:
             QDesktopServices.openUrl(QUrl.fromLocalFile(self._last_dir))
 
+    # ================================================================ 설정
+    def _open_settings(self) -> None:
+        if self.runner.running:
+            return
+        SettingsDialog(self.settings, self.ffmpeg, self._pick_ffmpeg,
+                       lambda: self._offer_install(force=True), self).exec()
+
+    def _pick_ffmpeg(self) -> None:
+        d = QFileDialog.getExistingDirectory(self, "ffmpeg.exe / ffprobe.exe 가 있는 폴더 선택")
+        if not d:
+            return
+        ff, fp = find_tool("ffmpeg", d), find_tool("ffprobe", d)
+        if ff and fp and Path(ff).parent == Path(d) == Path(fp).parent:
+            self.settings.setValue("ffmpeg_dir", d)
+            self.ffmpeg, self.ffprobe = ff, fp
+            QMessageBox.information(self, "ffmpeg", f"ffmpeg 경로를 설정했습니다.\n{ff}")
+        else:
+            QMessageBox.warning(self, "ffmpeg", "선택한 폴더에 ffmpeg.exe와 ffprobe.exe가 함께 있어야 합니다.")
+
     # ================================================================ ffmpeg 설치
-    def _offer_install(self) -> None:
-        if self.ffmpeg and self.ffprobe:
+    def _offer_install(self, force: bool = False) -> None:
+        if self.ffmpeg and self.ffprobe and not force:
             return
         ans = QMessageBox.question(
             self, "ffmpeg 설치",
-            "ffmpeg가 없습니다. 지금 자동으로 내려받아 앱 폴더의 bin 에 설치할까요?\n\n"
+            ("ffmpeg를 다시 설치합니다. " if force else "ffmpeg가 없습니다. ")
+            + "지금 자동으로 내려받아 앱 폴더의 bin 에 설치할까요?\n\n"
             "출처: gyan.dev 릴리스 빌드 (약 100MB, GPL 라이선스)\n"
             "다운로드 후 SHA-256 체크섬을 검증합니다.")
         if ans != QMessageBox.Yes:
@@ -398,6 +485,7 @@ class MainWindow(QMainWindow):
 
     def _on_install_ok(self, _folder: str) -> None:
         self._dlg.close()
+        self.settings.remove("ffmpeg_dir")   # 앱 폴더에 새로 설치했으니 직접 지정한 경로는 해제
         self.ffmpeg, self.ffprobe = find_tool("ffmpeg"), find_tool("ffprobe")
         QMessageBox.information(self, "ffmpeg", "설치가 완료되었습니다.")
 

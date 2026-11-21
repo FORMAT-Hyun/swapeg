@@ -5,6 +5,7 @@ __pycache__/
 build/
 dist/
 *.spec
+releases/
 
 # 자동 설치되는 ffmpeg 바이너리는 커밋하지 않음
 bin/*

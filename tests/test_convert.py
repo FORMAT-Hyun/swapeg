@@ -102,3 +102,34 @@ def test_thumbnail_for_video_image_and_audio(samples):
     assert grab_thumbnail(FF, str(samples["video"]), 1.0).startswith(png)
     assert grab_thumbnail(FF, str(samples["image"])).startswith(png)
     assert grab_thumbnail(FF, str(samples["audio"])) == b""   # 커버가 없는 오디오는 미리보기 없음
+
+
+def test_quality_levels_change_encoding_args():
+    from core.probe import MediaInfo
+    info = MediaInfo(vcodec="vp9", acodec="opus")
+    a = simple.build_args("ff", "i.avi", "o.mp4", "mp4", MediaInfo(vcodec="mpeg4x", acodec="wmav2"), "video")
+    assert a[a.index("-crf") + 1] == "16" and a[a.index("-b:a") + 1] == "320k"
+    b = simple.build_args("ff", "i.avi", "o.mp4", "mp4", MediaInfo(vcodec="mpeg4x", acodec="wmav2"), "video", "small")
+    assert b[b.index("-crf") + 1] == "26" and b[b.index("-b:a") + 1] == "128k"
+    j = simple.build_args("ff", "i.png", "o.jpg", "jpg", info, "image", "balanced")
+    assert j[j.index("-q:v") + 1] == "3"
+    w = simple.build_args("ff", "i.png", "o.webp", "webp", info, "image", "small")
+    assert w[w.index("-lossless") + 1] == "0" and "-quality" in w
+    f = simple.build_args("ff", "i.wav", "o.flac", "flac", info, "audio", "small")
+    assert "-b:a" not in f and "-crf" not in f           # 무손실 형식은 그대로
+
+
+def test_small_quality_makes_smaller_file(samples):
+    info = probe(FP, str(samples["video"]))
+    sizes = {}
+    for q in ("original", "small"):
+        out = simple.output_path(str(samples["video"]), "webm")
+        args = simple.build_args(FF, str(samples["video"]), str(out), "webm", info, "video", q)
+        assert subprocess.run(args, capture_output=True).returncode == 0
+        sizes[q] = out.stat().st_size
+    assert sizes["small"] < sizes["original"]
+
+
+def test_custom_output_dir(tmp_path):
+    out = simple.output_path("C:/x/영상.mp4", "mkv", str(tmp_path))
+    assert out.parent == tmp_path and out.name == "영상.mkv"

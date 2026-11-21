@@ -3,7 +3,7 @@
 $ErrorActionPreference = 'Stop'
 $url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
 $bin = Join-Path (Split-Path $PSScriptRoot -Parent) 'bin'
-$tmp = Join-Path ([IO.Path]::GetTempPath()) ('ffmpeg-gui-' + [guid]::NewGuid().ToString('N'))
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ('swapeg-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $bin, $tmp | Out-Null
 
 try {

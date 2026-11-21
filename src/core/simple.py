@@ -159,16 +159,59 @@ def can_convert(kind: str, src_ext: str, target: str, tk: str | None = None) -> 
     return False
 
 
-def output_path(src: str, ext: str) -> Path:
-    """원본과 같은 폴더에 같은 이름으로. 겹치면 _converted, _1 ... 를 붙인다."""
+def output_path(src: str, ext: str, out_dir: str | None = None) -> Path:
+    """기본은 원본과 같은 폴더(out_dir 지정 시 그 폴더)에 같은 이름으로. 겹치면 _converted, _1 ... 를 붙인다."""
     s = Path(src)
-    out = s.with_suffix("." + ext)
+    folder = Path(out_dir) if out_dir else s.parent
+    out = folder / f"{s.stem}.{ext}"
     if out.exists() or out.resolve() == s.resolve():
-        out = s.with_name(f"{s.stem}_converted.{ext}")
+        out = folder / f"{s.stem}_converted.{ext}"
     i = 1
     while out.exists():
-        out = s.with_name(f"{s.stem}_converted_{i}.{ext}")
+        out = folder / f"{s.stem}_converted_{i}.{ext}"
         i += 1
+    return out
+
+
+# ---- 화질 설정 -------------------------------------------------------------
+QUALITY_LEVELS = [
+    ("original", "원본 화질 유지", "가장 선명하고 용량이 큽니다 (기본)"),
+    ("balanced", "균형", "화질 차이는 거의 없고 용량이 줄어듭니다"),
+    ("small", "작은 용량", "용량을 크게 줄입니다. 화질이 조금 떨어질 수 있습니다"),
+]
+_CRF = {"libx264": {"balanced": "21", "small": "26"}, "libx265": {"balanced": "24", "small": "29"},
+        "libvpx-vp9": {"balanced": "30", "small": "36"}}
+_ABITRATE = {"balanced": "192k", "small": "128k"}
+_QA = {"libmp3lame": {"balanced": "2", "small": "4"}, "libvorbis": {"balanced": "5", "small": "3"}}
+_QV = {"mjpeg": {"balanced": "3", "small": "6"}, "mpeg2video": {"balanced": "4", "small": "8"},
+       "wmv2": {"balanced": "4", "small": "8"}, "libtheora": {"balanced": "7", "small": "5"}}
+
+
+def _tune(args: list[str], quality: str) -> list[str]:
+    """화질 설정을 인코딩 인자에 반영한다. 'original'이면 그대로. 무손실 형식(FLAC/WAV/PNG)은 건드리지 않는다."""
+    if quality not in ("balanced", "small"):
+        return args
+    out = list(args)
+    vcodec = acodec = None
+    for i, a in enumerate(out[:-1]):
+        if a == "-c:v":
+            vcodec = out[i + 1]
+        elif a == "-c:a":
+            acodec = out[i + 1]
+    for i, a in enumerate(out[:-1]):
+        nxt = out[i + 1]
+        if a == "-crf" and vcodec in _CRF:
+            out[i + 1] = _CRF[vcodec][quality]
+        elif a == "-b:a" and acodec in ("aac", "libopus", "libmp3lame", "mp2", "wmav2", "ac3"):
+            out[i + 1] = _ABITRATE[quality]
+        elif a == "-q:a" and acodec in _QA:
+            out[i + 1] = _QA[acodec][quality]
+        elif a in ("-q:v", "-qscale:v") and (vcodec in _QV or nxt == "1"):
+            out[i + 1] = _QV.get(vcodec, _QV["mjpeg"])[quality]  # vcodec 없는 jpg 출력은 mjpeg 취급
+    if "-lossless" in out:  # WebP: 무손실 -> 고품질 손실 압축
+        i = out.index("-lossless")
+        out[i + 1] = "0"
+        out[i + 2:i + 2] = ["-quality", "90" if quality == "balanced" else "75"]
     return out
 
 
@@ -179,15 +222,18 @@ def _can_copy(codec: str | None, allowed: set[str] | None) -> bool:
 _BASE = ["-hide_banner", "-nostdin", "-n", "-progress", "pipe:1", "-nostats"]
 
 
-def build_args(ffmpeg: str, src: str, out: str, target: str, info: MediaInfo, kind: str) -> list[str]:
+def build_args(ffmpeg: str, src: str, out: str, target: str, info: MediaInfo, kind: str,
+               quality: str = "original") -> list[str]:
     tk = TARGET_KIND[target]
     if target == "gif" and kind == "image":
         tk = "image"  # 정지 이미지 -> GIF
     if tk == "video":
-        return _video(ffmpeg, src, out, target, info)
-    if tk == "audio":
-        return _audio(ffmpeg, src, out, target, info)
-    return _image(ffmpeg, src, out, target)
+        args = _video(ffmpeg, src, out, target, info)
+    elif tk == "audio":
+        args = _audio(ffmpeg, src, out, target, info)
+    else:
+        args = _image(ffmpeg, src, out, target)
+    return _tune(args, quality)
 
 
 def _video(ffmpeg, src, out, target, info) -> list[str]:

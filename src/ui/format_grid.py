@@ -4,10 +4,11 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
-from PySide6.QtWidgets import (QButtonGroup, QLabel, QLayout, QPushButton, QScrollArea,
+from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QLayout, QPushButton, QScrollArea,
                                QVBoxLayout, QWidget)
 
 from core import simple
+from ui import icons
 
 
 class FlowLayout(QLayout):
@@ -139,8 +140,17 @@ class FormatGrid(QScrollArea):
             v = QVBoxLayout(box)
             v.setContentsMargins(0, 0, 0, 0)
             v.setSpacing(8)
-            header = QLabel(simple.KIND_TITLE[kind])
-            header.setObjectName("SectionLabel")
+            header = QWidget()                      # 종류 아이콘 + 제목
+            hl = QHBoxLayout(header)
+            hl.setContentsMargins(0, 0, 0, 0)
+            hl.setSpacing(6)
+            ico = QLabel()
+            ico.setPixmap(icons.pixmap(kind, icons.GREEN, 20, 1.8))
+            title = QLabel(simple.KIND_TITLE[kind])
+            title.setObjectName("SectionLabel")
+            hl.addWidget(ico)
+            hl.addWidget(title)
+            hl.addStretch(1)
             v.addWidget(header)
             flow = FlowLayout()
             v.addLayout(flow)

@@ -14,7 +14,7 @@ from PySide6.QtCore import QThread, Signal
 # gyan.dev 릴리스 빌드 (GPL, libx264/libx265 포함). 같은 주소 + ".sha256" 에 해시가 있다.
 DEFAULT_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 WANTED = ("ffmpeg.exe", "ffprobe.exe")
-_HEADERS = {"User-Agent": "ffmpeg-gui"}
+_HEADERS = {"User-Agent": "Swapeg"}
 
 
 class Cancelled(Exception):
@@ -37,7 +37,7 @@ class InstallWorker(QThread):
         self._cancel = True
 
     def run(self) -> None:
-        tmp = Path(tempfile.mkdtemp(prefix="ffmpeg-gui-"))
+        tmp = Path(tempfile.mkdtemp(prefix="swapeg-"))
         try:
             self.status.emit("체크섬 확인 중...")
             expected = self._fetch_hash()

@@ -40,7 +40,11 @@ class _Task(QRunnable):
         self.ffmpeg, self.path, self.seek, self.signals = ffmpeg, path, seek, signals
 
     def run(self) -> None:
-        self.signals.done.emit(self.path, grab_thumbnail(self.ffmpeg, self.path, self.seek))
+        data = grab_thumbnail(self.ffmpeg, self.path, self.seek)
+        try:
+            self.signals.done.emit(self.path, data)
+        except RuntimeError:
+            pass  # 그 사이 앱이 종료되어 신호 객체가 사라진 경우
 
 
 class Thumbs(QObject):

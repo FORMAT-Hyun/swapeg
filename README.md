@@ -1,4 +1,4 @@
-# FFmpeg 변환기
+# Swapeg
 
 파일을 넣고, 바꿀 형식을 고른 뒤, [바꾸기]만 누르면 되는 ffmpeg GUI (Python + PySide6).
 화질은 원본 그대로 유지합니다 (가능하면 재인코딩 없이 복사, 필요하면 고화질 인코딩).
@@ -26,7 +26,8 @@
 
 ## 배포(exe)
 ```powershell
-.\.venv\Scripts\pip install pyinstaller
-.\.venv\Scripts\pyinstaller --noconsole --name FFmpegGUI --paths src src\app.py
+powershell -ExecutionPolicy Bypass -File tools\build.ps1
 ```
+`releases\Swapeg-<버전>-win64.zip`(와 `.sha256`)이 만들어집니다. 버전은 `src/version.py`에서 바꿉니다.
+(아이콘 다시 만들기: `.\.venv\Scripts\python tools\make_icon.py`)
 FFmpeg 빌드의 라이선스(GPL)를 확인하고 배포 시 고지하세요.
