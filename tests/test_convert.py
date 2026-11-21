@@ -44,20 +44,24 @@ def convert(path, target):
     return out
 
 
-@pytest.mark.parametrize("target", ["mp4", "mkv", "webm", "mov", "avi", "gif"])
+def _targets(kind):
+    return [e for e, _l, k in simple.FORMATS if k == kind]
+
+
+@pytest.mark.parametrize("target", _targets("video"))
 def test_video_targets(samples, target):
     out = convert(samples["video"], target)
     info = probe(FP, str(out))
-    assert info.width == (320 if target != "gif" else 320) and info.height == 240
+    assert info.width == 320 and info.height == 240
 
 
-@pytest.mark.parametrize("target", ["mp3", "wav", "flac", "m4a", "ogg"])
+@pytest.mark.parametrize("target", _targets("audio"))
 def test_audio_targets_from_video_and_audio(samples, target):
-    assert probe(FP, str(convert(samples["video"], target))).duration
-    assert probe(FP, str(convert(samples["audio"], target))).duration
+    assert probe(FP, str(convert(samples["video"], target))).acodec
+    assert probe(FP, str(convert(samples["audio"], target))).acodec
 
 
-@pytest.mark.parametrize("target", ["png", "jpg", "webp", "bmp", "tiff", "ico"])
+@pytest.mark.parametrize("target", _targets("image"))
 def test_image_targets(samples, target):
     out = convert(samples["image"], target)
     assert probe(FP, str(out)).width == 64

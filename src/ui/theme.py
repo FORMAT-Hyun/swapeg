@@ -38,6 +38,24 @@ QMainWindow, QDialog {{ background: {BG}; }}
 QLabel {{ background: transparent; }}
 QLabel#Muted {{ color: {MUTED}; }}
 QLabel#Title {{ font-size: 18pt; font-weight: 700; color: {GREEN}; }}
+QLabel#SectionLabel {{ color: {GREEN}; font-weight: 600; font-size: 10pt; }}
+QLabel#Error {{ color: #d64545; }}
+QLabel#BigTitle {{ font-size: 20pt; font-weight: 700; color: {GREEN}; }}
+QLabel#BigPct {{ font-size: 34pt; font-weight: 700; color: {TEXT}; }}
+QProgressBar#BigBar {{ background: {SURFACE2}; border-radius: 8px; min-height: 16px; max-height: 16px; }}
+QProgressBar#BigBar::chunk {{ background: {ACCENT}; border-radius: 8px; }}
+QPushButton[fmt="true"] {{
+    background: {BG}; border: 1px solid {BORDER_STRONG}; border-radius: 12px;
+    padding: 12px 8px; min-width: 88px; font-size: 11pt; font-weight: 600;
+}}
+QPushButton[fmt="true"]:hover {{ background: {GREEN_SOFT}; border-color: {GREEN}; }}
+QPushButton[fmt="true"]:checked {{
+    background: {ACCENT}; border-color: {ACCENT}; color: {ON_ACCENT}; font-weight: 700;
+}}
+QScrollArea {{ background: transparent; border: none; }}
+QWidget#GridInner {{ background: transparent; }}
+QLabel#DropGuide {{ color: {MUTED}; font-size: 13pt; }}
+QPushButton#DropZone:hover QLabel#DropGuide {{ color: {GREEN}; }}
 QPushButton#DropZone {{
     background: {SURFACE}; border: 2px dashed {BORDER_STRONG}; border-radius: 16px;
     color: {MUTED}; font-size: 13pt; padding: 40px;

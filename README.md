@@ -12,9 +12,11 @@
 ```
 
 ## 지원 형식
-- 영상: MP4, MKV, WebM, MOV, AVI, GIF
-- 오디오: MP3, WAV, FLAC, M4A, OGG (영상에서 소리 추출 포함)
-- 이미지: PNG, JPG, WebP, BMP, TIFF, ICO
+입력은 ffmpeg가 읽을 수 있는 파일이면 확장자와 무관하게 모두 받습니다.
+
+- 영상(20): MP4, MKV, WebM, MOV, AVI, M4V, WMV, ASF, FLV, 3GP, 3G2, TS, MTS, M2TS, MPG, MPEG, VOB, OGV, GIF, APNG
+- 오디오(18, 영상에서 소리 추출 포함): MP3, WAV, FLAC, M4A, AAC, OGG, OGA, OPUS, WMA, AIFF, AIF, AC3, MP2, MKA, AU, CAF, WV, TTA
+- 이미지(17): PNG, JPG, JPEG, WebP, BMP, TIFF, TIF, ICO, TGA, PPM, JP2, PCX, SGI, QOI, EXR, AVIF
 
 ## 테스트
 ```powershell
