@@ -11,8 +11,9 @@
 - **54 output formats**: 20 video, 18 audio and 17 image (GIF is both a video and an image format). Input can be anything FFmpeg can read.
 - **Preview** of the source file before converting and of the result when it is done.
 - **Batch conversion** with an overall progress bar and a Cancel button.
-- **Search box** to find a format quickly (try `mp3`, `video` or `image` - the app labels are in Korean, so `영상`, `오디오` and `이미지` also work).
-- **Settings** for the save location, quality level, and what happens after conversion.
+- **Search box** to find a format quickly (try `mp3`, `video` or `image`).
+- **English and Korean interface** - follows your Windows language by default and can be switched in Settings.
+- **Settings** for the save location, quality level, language and what happens after conversion.
 - **FFmpeg is set up for you**: if it is missing, Swapeg downloads it on first run and verifies its checksum.
 
 ## Download and install
@@ -66,13 +67,13 @@ Open **Settings** (top right) to change:
 - **Save location** - next to the original file (default) or a folder you choose.
 - **Quality** - *Keep original quality* (default), *Balanced* (much smaller files, hardly any visible difference) or *Small size* (smallest files, slight quality loss). Lossless formats such as FLAC, WAV and PNG are never degraded.
 - **After conversion** - optionally open the result folder automatically.
+- **Language** - Automatic (follows Windows), English or Korean. Swapeg restarts to apply the change.
 - **FFmpeg** - see which FFmpeg is used, choose another folder, or reinstall it.
 
 ![Settings](docs/images/settings.png)
 
 ## Notes and limits
 
-- The app interface is currently in Korean.
 - Converting to a very different format may re-encode, which takes longer for large videos. Copying (no re-encode) is near-instant.
 - Transparent images saved as JPG get a white background, because JPG has no transparency.
 - GIF output is limited to 720 px wide and 15 fps to keep files a sensible size.

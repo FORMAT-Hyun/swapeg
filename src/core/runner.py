@@ -6,6 +6,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
+from .i18n import tr
+
 
 @dataclass
 class Job:
@@ -84,18 +86,18 @@ class JobRunner(QObject):
 
     def _on_error(self, err) -> None:
         if err == QProcess.FailedToStart:
-            self.log.emit("ffmpeg 실행에 실패했습니다.")
+            self.log.emit(tr("ffmpeg 실행에 실패했습니다."))
 
     def _on_finished(self, code: int, _status) -> None:
         idx, job = self._i, self._jobs[self._i]
         if self._cancelled:
             Path(job.output).unlink(missing_ok=True)
-            self.job_finished.emit(idx, False, "취소됨")
+            self.job_finished.emit(idx, False, tr("취소됨"))
         elif code == 0:
             self.progress.emit(idx, 1.0)
-            self.job_finished.emit(idx, True, "완료")
+            self.job_finished.emit(idx, True, tr("완료"))
         else:
             Path(job.output).unlink(missing_ok=True)
-            self.job_finished.emit(idx, False, f"실패 (코드 {code})")
+            self.job_finished.emit(idx, False, tr("실패 (코드 {code})", code=code))
         self._proc.deleteLater()
         self._next()

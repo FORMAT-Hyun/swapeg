@@ -3,9 +3,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from PySide6.QtCore import QSettings  # noqa: E402
 from PySide6.QtGui import QIcon  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from core import i18n  # noqa: E402
 from core.ffpath import app_dir  # noqa: E402
 
 from ui.main_window import MainWindow  # noqa: E402
@@ -20,6 +22,7 @@ def main() -> int:
         except Exception:
             pass
     app = QApplication(sys.argv)
+    i18n.set_language(i18n.resolve(str(QSettings("Swapeg", "Swapeg").value("language", "auto"))))
     icon = app_dir() / "assets" / "icon.png"
     if icon.exists():
         app.setWindowIcon(QIcon(str(icon)))

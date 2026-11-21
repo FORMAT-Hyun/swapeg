@@ -6,6 +6,7 @@ from PySide6.QtGui import QFontMetrics, QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
 from core import simple
+from core.i18n import tr
 from core.thumb import Thumbs
 
 
@@ -42,7 +43,7 @@ class PreviewCard(QFrame):
         self._pix = None
         ext = simple.ext_of(path)
         self.img.setPixmap(QPixmap())
-        self.img.setText("불러오는 중…")
+        self.img.setText(tr("불러오는 중…"))
         fm = QFontMetrics(self.name.font())
         self.name.setText(fm.elidedText(name, Qt.ElideMiddle, self._w))
         self.name.setToolTip(name)
@@ -58,6 +59,6 @@ class PreviewCard(QFrame):
             self.img.setText("")
             self.img.setPixmap(pix.scaled(self._w, self._h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         elif self._ext in simple.AUDIO_EXTS:
-            self.img.setText("♪\n오디오")
+            self.img.setText(tr("♪\n오디오"))
         else:
-            self.img.setText(f".{self._ext}\n미리보기 없음")
+            self.img.setText(tr(".{ext}\n미리보기 없음", ext=self._ext))

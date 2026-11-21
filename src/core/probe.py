@@ -6,6 +6,8 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
+from .i18n import tr
+
 
 @dataclass
 class MediaInfo:
@@ -27,7 +29,7 @@ class MediaInfo:
             m, s = divmod(int(self.duration), 60)
             h, m = divmod(m, 60)
             parts.append(f"{h}:{m:02d}:{s:02d}")
-        return " · ".join(parts) or "정보 없음"
+        return " · ".join(parts) or tr("정보 없음")
 
 
 def probe(ffprobe: str, path: str) -> MediaInfo:

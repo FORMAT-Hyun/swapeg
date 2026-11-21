@@ -11,6 +11,8 @@ from pathlib import Path, PurePosixPath
 
 from PySide6.QtCore import QThread, Signal
 
+from .i18n import tr
+
 # gyan.dev 릴리스 빌드 (GPL, libx264/libx265 포함). 같은 주소 + ".sha256" 에 해시가 있다.
 DEFAULT_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 WANTED = ("ffmpeg.exe", "ffprobe.exe")
@@ -39,16 +41,16 @@ class InstallWorker(QThread):
     def run(self) -> None:
         tmp = Path(tempfile.mkdtemp(prefix="swapeg-"))
         try:
-            self.status.emit("체크섬 확인 중...")
+            self.status.emit(tr("체크섬 확인 중..."))
             expected = self._fetch_hash()
             zip_path = tmp / "ffmpeg.zip"
-            self.status.emit("ffmpeg 다운로드 중...")
+            self.status.emit(tr("ffmpeg 다운로드 중..."))
             self._download(zip_path, expected)
-            self.status.emit("압축 해제 중...")
+            self.status.emit(tr("압축 해제 중..."))
             self._extract(zip_path)
             self.finished_ok.emit(str(self.dest_dir))
         except Cancelled:
-            self.failed.emit("취소되었습니다.")
+            self.failed.emit(tr("취소되었습니다."))
         except Exception as e:  # 네트워크/디스크/해시 오류 모두 사용자에게 메시지로 전달
             self.failed.emit(str(e))
         finally:
@@ -61,7 +63,7 @@ class InstallWorker(QThread):
             text = r.read(4096).decode("ascii", "ignore").strip()
         digest = text.split()[0].lower() if text else ""
         if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
-            raise RuntimeError("체크섬 정보를 가져오지 못했습니다.")
+            raise RuntimeError(tr("체크섬 정보를 가져오지 못했습니다."))
         return digest
 
     def _download(self, target: Path, expected: str) -> None:
@@ -81,7 +83,7 @@ class InstallWorker(QThread):
                 done += len(chunk)
                 self.progress.emit(done, total)
         if h.hexdigest() != expected:
-            raise RuntimeError("다운로드 파일의 체크섬이 일치하지 않습니다. (파일 손상 또는 변조 가능성)")
+            raise RuntimeError(tr("다운로드 파일의 체크섬이 일치하지 않습니다. (파일 손상 또는 변조 가능성)"))
 
     def _extract(self, zip_path: Path) -> None:
         self.dest_dir.mkdir(parents=True, exist_ok=True)
@@ -97,4 +99,4 @@ class InstallWorker(QThread):
                     os.replace(part, self.dest_dir / p.name)
                     found.add(p.name)
         if set(WANTED) - found:
-            raise RuntimeError("압축 파일에서 ffmpeg.exe/ffprobe.exe를 찾지 못했습니다.")
+            raise RuntimeError(tr("압축 파일에서 ffmpeg.exe/ffprobe.exe를 찾지 못했습니다."))

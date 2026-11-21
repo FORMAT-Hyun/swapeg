@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QLayout, QPush
                                QVBoxLayout, QWidget)
 
 from core import simple
+from core.i18n import EN, tr
 from ui import icons
 
 
@@ -146,7 +147,7 @@ class FormatGrid(QScrollArea):
             hl.setSpacing(6)
             ico = QLabel()
             ico.setPixmap(icons.pixmap(kind, icons.GREEN, 20, 1.8))
-            title = QLabel(simple.KIND_TITLE[kind])
+            title = QLabel(tr(simple.KIND_TITLE[kind]))
             title.setObjectName("SectionLabel")
             hl.addWidget(ico)
             hl.addWidget(title)
@@ -189,7 +190,7 @@ class FormatGrid(QScrollArea):
         for s in self._sections:
             any_visible = False
             for ext, b in s.chips.items():
-                hay = f"{ext} {simple.label_of(ext)} {simple.KIND_TITLE[s.kind]}".lower()
+                hay = f"{ext} {simple.label_of(ext)} {simple.KIND_TITLE[s.kind]} {EN[simple.KIND_TITLE[s.kind]]}".lower()  # 한/영 이름 모두 검색
                 show = not t or t in hay
                 b.setVisible(show)
                 any_visible |= show
