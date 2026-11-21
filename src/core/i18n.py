@@ -121,6 +121,19 @@ EN: dict[str, str] = {
     "저장": "Save",
     "저장할 폴더 선택": "Choose a save folder",
     "언어": "Language",
+    # --- 프로그램 정보 ---
+    "정보": "About",
+    "프로그램 정보": "About Swapeg",
+    "버전": "Version",
+    "파일을 넣고, 형식을 고르고, 변환만 누르면 끝나는 ffmpeg 변환기입니다. 화질은 원본 그대로 유지합니다.":
+        "Drop a file, pick a format, convert. A simple FFmpeg converter that keeps the original quality.",
+    "GitHub 저장소": "GitHub repository",
+    "새 버전 확인": "Check for new versions",
+    "문제 신고 / 의견 보내기": "Report a problem or suggest something",
+    "Swapeg는 FFmpeg(gyan.dev의 GPL 빌드)와 Qt for Python(PySide6, LGPL)을 사용합니다. FFmpeg 프로젝트와는 관련이 없습니다.":
+        "Swapeg uses FFmpeg (GPL builds from gyan.dev) and Qt for Python (PySide6, LGPL). "
+        "It is not affiliated with the FFmpeg project.",
+    "닫기": "Close",
     "자동 (시스템 언어)": "Automatic (system language)",
     "언어를 바꾸려면 Swapeg를 다시 시작해야 합니다.\n지금 다시 시작할까요?":
         "Swapeg needs to restart to change the language.\nRestart now?",

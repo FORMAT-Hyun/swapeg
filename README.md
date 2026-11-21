@@ -72,6 +72,14 @@ Open **Settings** (top right) to change:
 
 ![Settings](docs/images/settings.png)
 
+## About and updates
+
+Click **About** (top right) to see the installed version and open the [GitHub repository](https://github.com/FORMAT-Hyun/swapeg), the page for new versions, or the issue tracker to report a problem or suggest something.
+
+![About](docs/images/about.png)
+
+To update, download the newest `Setup.exe` from the [Releases page](https://github.com/FORMAT-Hyun/swapeg/releases/latest) and run it - it installs over your current version and keeps your settings.
+
 ## Notes and limits
 
 - Converting to a very different format may re-encode, which takes longer for large videos. Copying (no re-encode) is near-instant.

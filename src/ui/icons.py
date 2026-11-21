@@ -30,6 +30,10 @@ def _draw(name: str, p: QPainter) -> None:
             a = math.radians(k * 45)
             p.drawLine(QPointF(12 + 7.2 * math.cos(a), 12 + 7.2 * math.sin(a)),
                        QPointF(12 + 10 * math.cos(a), 12 + 10 * math.sin(a)))
+    elif name == "info":
+        p.drawEllipse(QPointF(12, 12), 9, 9)
+        p.drawLine(QPointF(12, 11), QPointF(12, 16.5))
+        p.drawLine(QPointF(12, 7.6), QPointF(12, 7.7))
     elif name == "back":
         p.drawPath(_path((15, 5), (8, 12), (15, 19)))
     elif name == "folder":

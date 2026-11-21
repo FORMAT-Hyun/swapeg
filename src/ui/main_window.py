@@ -18,6 +18,7 @@ from core.probe import MediaInfo, probe
 from core.runner import Job, JobRunner
 from core.thumb import Thumbs
 from ui import icons
+from ui.about_dialog import AboutDialog
 from ui.format_grid import FormatGrid
 from ui.preview import PreviewCard
 from ui.settings_dialog import SettingsDialog, load as load_settings
@@ -90,6 +91,7 @@ class MainWindow(QMainWindow):
         head.addWidget(logo)
         head.addWidget(title)
         head.addStretch(1)
+        head.addWidget(self._info_button())
         head.addWidget(self._gear_button())
         outer.addLayout(head)
         self.drop = QPushButton()
@@ -140,6 +142,15 @@ class MainWindow(QMainWindow):
         b.clicked.connect(self._open_settings)
         return b
 
+    def _info_button(self) -> QPushButton:
+        b = QPushButton(tr("정보"))
+        b.setProperty("ghost", True)
+        b.setIcon(icons.icon("info"))
+        b.setIconSize(QSize(18, 18))
+        b.setCursor(Qt.PointingHandCursor)
+        b.clicked.connect(lambda: AboutDialog(self).exec())
+        return b
+
     def _build_pick_page(self) -> QWidget:
         w, v = self._page()
         top = QHBoxLayout()
@@ -156,6 +167,7 @@ class MainWindow(QMainWindow):
         top.addWidget(back)
         top.addStretch(1)
         top.addWidget(self.search)
+        top.addWidget(self._info_button())
         top.addWidget(self._gear_button())
         v.addLayout(top)
 
