@@ -23,14 +23,15 @@ VIDEO_TARGETS = ["mp4", "mkv", "webm", "mov", "avi", "m4v", "wmv", "asf", "flv",
                  "ts", "mts", "m2ts", "mpg", "mpeg", "vob", "ogv", "gif", "apng"]
 AUDIO_TARGETS = ["mp3", "wav", "flac", "m4a", "aac", "ogg", "oga", "opus", "wma", "aiff", "aif",
                  "ac3", "mp2", "mka", "au", "caf", "wv", "tta"]
-IMAGE_TARGETS = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "tif", "ico", "tga", "ppm",
+# GIF는 영상(움짤)과 이미지(정지 GIF) 양쪽에 모두 있다
+IMAGE_TARGETS = ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff", "tif", "ico", "tga", "ppm",
                  "jp2", "pcx", "sgi", "qoi", "exr", "avif"]
 
 # 화면에 버튼으로 항상 보여 줄 자주 쓰는 형식 (나머지는 [더보기])
 POPULAR = {
     "video": ["mp4", "mkv", "webm", "mov", "avi", "gif"],
     "audio": ["mp3", "wav", "flac", "m4a", "ogg", "opus"],
-    "image": ["png", "jpg", "webp", "bmp", "tiff", "ico"],
+    "image": ["png", "jpg", "webp", "gif", "bmp", "tiff", "ico"],
 }
 DEFAULT = {"video": "mp4", "audio": "mp3", "image": "png"}
 
@@ -40,7 +41,9 @@ FORMATS: list[tuple[str, str, str]] = (
     + [(e, _NAMES.get(e, e.upper()), "audio") for e in AUDIO_TARGETS]
     + [(e, _NAMES.get(e, e.upper()), "image") for e in IMAGE_TARGETS]
 )
-TARGET_KIND = {ext: kind for ext, _label, kind in FORMATS}
+TARGET_KIND: dict[str, str] = {}   # 확장자 -> 기본 종류 (gif는 영상으로 취급, 이미지 쪽은 입력 종류로 구분)
+for _e, _l, _k in FORMATS:
+    TARGET_KIND.setdefault(_e, _k)
 _LABELS = {e: label for e, label, _k in FORMATS}
 
 
@@ -140,8 +143,13 @@ def kind_of(path: str, info: MediaInfo) -> str:
     return "video"
 
 
-def can_convert(kind: str, src_ext: str, target: str) -> bool:
-    tk = TARGET_KIND.get(target)
+def can_convert(kind: str, src_ext: str, target: str, tk: str | None = None) -> bool:
+    """kind: 입력 종류, target: 출력 확장자, tk: 출력 종류(화면에서 GIF처럼 두 종류에 있는 형식을 구분할 때)."""
+    if src_ext == target:
+        return False  # 같은 형식으로 바꾸는 건 의미가 없다
+    if target == "gif" and tk is None:
+        return kind in ("video", "image")
+    tk = tk or TARGET_KIND.get(target)
     if tk == "video":
         return kind == "video"
     if tk == "audio":
@@ -173,6 +181,8 @@ _BASE = ["-hide_banner", "-nostdin", "-n", "-progress", "pipe:1", "-nostats"]
 
 def build_args(ffmpeg: str, src: str, out: str, target: str, info: MediaInfo, kind: str) -> list[str]:
     tk = TARGET_KIND[target]
+    if target == "gif" and kind == "image":
+        tk = "image"  # 정지 이미지 -> GIF
     if tk == "video":
         return _video(ffmpeg, src, out, target, info)
     if tk == "audio":
@@ -221,6 +231,8 @@ def _image(ffmpeg, src, out, target) -> list[str]:
         args += ["-lossless", "1", "-compression_level", "6"]
     elif target == "png":
         args += ["-compression_level", "9"]
+    elif target == "gif":  # 256색 팔레트를 이미지에 맞춰 만들어 색 손실을 최소화
+        args += ["-filter_complex", "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"]
     elif target == "ico":
         args += ["-vf", "scale='min(256,iw)':'min(256,ih)':force_original_aspect_ratio=decrease"]
     elif target == "avif":

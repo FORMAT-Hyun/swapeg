@@ -14,7 +14,9 @@ from core.ffpath import app_dir, find_tool
 from core.installer import InstallWorker
 from core.probe import MediaInfo, probe
 from core.runner import Job, JobRunner
+from core.thumb import Thumbs
 from ui.format_grid import FormatGrid
+from ui.preview import PreviewCard
 
 PAGE_DROP, PAGE_PICK, PAGE_RUN = 0, 1, 2
 
@@ -41,6 +43,7 @@ class MainWindow(QMainWindow):
         self._last_dir = ""
         self._cancelled = False
 
+        self.thumbs = Thumbs(lambda: self.ffmpeg, self)
         self.runner = JobRunner(self)
         self.runner.job_started.connect(self._on_job_started)
         self.runner.progress.connect(self._on_progress)
@@ -94,14 +97,12 @@ class MainWindow(QMainWindow):
         back = QPushButton("← 처음으로")
         back.setProperty("ghost", True)
         back.clicked.connect(self._reset)
-        self.file_label = QLabel("")
-        self.file_label.setObjectName("Muted")
         self.search = QLineEdit()
         self.search.setPlaceholderText("검색  (예: mp3, 영상, 이미지)")
         self.search.setClearButtonEnabled(True)
         self.search.setFixedWidth(240)
         top.addWidget(back)
-        top.addWidget(self.file_label, 1)
+        top.addStretch(1)
         top.addWidget(self.search)
         v.addLayout(top)
 
@@ -110,7 +111,17 @@ class MainWindow(QMainWindow):
         self.grid.changed.connect(self._on_format_changed)
         self.search.textChanged.connect(self.grid.filter)
         self.search.returnPressed.connect(self._search_enter)
-        v.addWidget(self.grid, 1)
+
+        # 왼쪽: 넣은 파일 미리보기, 오른쪽: 형식 상자들
+        body = QHBoxLayout()
+        body.setSpacing(18)
+        self.pick_card = PreviewCard(self.thumbs, (200, 130))
+        left = QVBoxLayout()
+        left.addWidget(self.pick_card)
+        left.addStretch(1)
+        body.addLayout(left)
+        body.addWidget(self.grid, 1)
+        v.addLayout(body, 1)
 
         bottom = QHBoxLayout()
         b_more = QPushButton("파일 추가")
@@ -128,6 +139,12 @@ class MainWindow(QMainWindow):
     def _build_run_page(self) -> QWidget:
         w, v = self._page()
         v.addStretch(1)
+        self.run_cap = QLabel("")
+        self.run_cap.setObjectName("SectionLabel")
+        self.run_cap.setAlignment(Qt.AlignCenter)
+        self.run_card = PreviewCard(self.thumbs, (260, 150), show_sub=False)
+        v.addWidget(self.run_cap)
+        v.addWidget(self.run_card, 0, Qt.AlignHCenter)
         self.run_title = QLabel("변환 중...")
         self.run_title.setObjectName("BigTitle")
         self.run_title.setAlignment(Qt.AlignCenter)
@@ -208,12 +225,20 @@ class MainWindow(QMainWindow):
         n = len(self.items)
         first = self.items[0]
         name = Path(first["path"]).name
-        self.file_label.setText(
-            f"{name}  ·  {first['info'].summary()}" if n == 1 else f"{name} 외 {n - 1}개")
+        sub = first["info"].summary()
+        self.pick_card.show_file(first["path"], name if n == 1 else f"{name} 외 {n - 1}개", sub,
+                                 self._seek_hint(first))
         self.search.clear()
-        self.grid.rebuild(lambda ext: any(
-            simple.can_convert(it["kind"], simple.ext_of(it["path"]), ext) for it in self.items))
+        # 원본과 같은 확장자는 목록에서 뺀다 (mp4 파일에 MP4로 바꾸기 같은 건 의미가 없으므로)
+        self.grid.rebuild(lambda ext, tk: any(
+            simple.can_convert(it["kind"], simple.ext_of(it["path"]), ext, tk) for it in self.items))
         self.stack.setCurrentIndex(PAGE_PICK)
+
+    @staticmethod
+    def _seek_hint(item: dict) -> float:
+        """영상은 처음 검은 화면을 피하려고 20% 지점의 프레임을 쓴다."""
+        d = item["info"].duration
+        return min(d * 0.2, 10.0) if item["kind"] == "video" and d else 0.0
 
     def _on_format_changed(self, ext: str) -> None:
         if ext:
@@ -241,10 +266,14 @@ class MainWindow(QMainWindow):
         target = self.grid.current()
         if not target or not self.items:
             return
-        jobs, self._job_files, self._results = [], [], []
+        jobs, self._job_files, self._results, self._outs = [], [], [], []
+        self._ok_outs: list[str] = []
         for it in self.items:
             src = it["path"]
             name = Path(src).name
+            if simple.ext_of(src) == target:
+                self._results.append((name, False, "이미 같은 형식이에요"))
+                continue
             if not simple.can_convert(it["kind"], simple.ext_of(src), target):
                 self._results.append((name, False, "이 형식으로는 바꿀 수 없어요"))
                 continue
@@ -252,6 +281,7 @@ class MainWindow(QMainWindow):
             args = simple.build_args(self.ffmpeg, src, str(out), target, it["info"], it["kind"])
             jobs.append(Job(args, str(out), it["info"].duration))
             self._job_files.append(it)
+            self._outs.append(str(out))
         if not jobs:
             QMessageBox.information(self, "알림", "선택한 형식으로 바꿀 수 있는 파일이 없습니다.")
             return
@@ -262,6 +292,7 @@ class MainWindow(QMainWindow):
         self.run_bar.setValue(0)
         self.run_file.setText("")
         self.run_detail.setText("")
+        self.run_cap.setText("변환 중인 파일")
         self.btn_cancel.show()
         self.btn_cancel.setEnabled(True)
         self.btn_open.hide()
@@ -280,6 +311,8 @@ class MainWindow(QMainWindow):
         name = Path(self._job_files[i]["path"]).name
         total = len(self._job_files)
         self.run_file.setText(f"{name}  ({i + 1}/{total})")
+        it = self._job_files[i]
+        self.run_card.show_file(it["path"], name, "", self._seek_hint(it))
 
     def _on_progress(self, i: int, frac: float) -> None:
         overall = (i + frac) / len(self._job_files)
@@ -297,6 +330,8 @@ class MainWindow(QMainWindow):
         if not ok and msg.startswith("실패") and self._last_err:
             detail = f"{msg}: {self._last_err[:80]}"
         self._results.append((name, ok, detail))
+        if ok:
+            self._ok_outs.append(self._outs[i])
 
     def _on_all_finished(self) -> None:
         done = sum(1 for _n, ok, _m in self._results if ok)
@@ -315,6 +350,14 @@ class MainWindow(QMainWindow):
             self.run_pct.setText("100%")
         self.run_file.setText(f"{done}개 변환 완료" + (f" · {len(bad)}개 실패/건너뜀" if bad else ""))
         self.run_detail.setText("\n".join(f"{n}: {m}" for n, m in bad[:5]))
+        if self._ok_outs:  # 변환된 결과 미리보기 (여러 개면 첫 번째)
+            out = self._ok_outs[0]
+            dur = self._job_files[self._outs.index(out)]["info"].duration
+            label = Path(out).name + (f" 외 {len(self._ok_outs) - 1}개" if len(self._ok_outs) > 1 else "")
+            self.run_cap.setText("결과 미리보기")
+            self.run_card.show_file(out, label, "", min(dur * 0.2, 10.0) if dur else 0.0)
+        else:
+            self.run_cap.setText("")
 
     def _open_folder(self) -> None:
         if self._last_dir:

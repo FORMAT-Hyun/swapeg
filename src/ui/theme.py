@@ -38,6 +38,9 @@ QMainWindow, QDialog {{ background: {BG}; }}
 QLabel {{ background: transparent; }}
 QLabel#Muted {{ color: {MUTED}; }}
 QLabel#Title {{ font-size: 18pt; font-weight: 700; color: {GREEN}; }}
+QFrame#Preview {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+QLabel#PreviewImg {{ background: {SURFACE2}; border-radius: 8px; color: {MUTED}; font-size: 11pt; }}
+QLabel#PreviewName {{ font-weight: 600; }}
 QLabel#SectionLabel {{ color: {GREEN}; font-weight: 600; font-size: 10pt; }}
 QLabel#Error {{ color: #d64545; }}
 QLabel#BigTitle {{ font-size: 20pt; font-weight: 700; color: {GREEN}; }}

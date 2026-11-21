@@ -117,8 +117,8 @@ class FormatGrid(QScrollArea):
                 return
 
     # ------------------------------------------------------------ 구성
-    def rebuild(self, allowed: Callable[[str], bool]) -> None:
-        """allowed(ext) 가 True 인 형식만 상자로 보여 준다. 이전 선택이 남아 있으면 유지."""
+    def rebuild(self, allowed: Callable[[str, str], bool]) -> None:
+        """allowed(ext, kind) 가 True 인 형식만 상자로 보여 준다. 이전 선택이 남아 있으면 유지."""
         prev = self._current or self._preferred
         for s in self._sections:
             self._lay.removeWidget(s.box)
@@ -131,7 +131,7 @@ class FormatGrid(QScrollArea):
 
         by_kind: dict[str, list[str]] = {}
         for ext, _label, kind in simple.FORMATS:
-            if allowed(ext):
+            if allowed(ext, kind):
                 by_kind.setdefault(kind, []).append(ext)
 
         for kind, exts in by_kind.items():

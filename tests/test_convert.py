@@ -35,7 +35,8 @@ def samples(tmp_path_factory):
 def convert(path, target):
     info = probe(FP, str(path))
     kind = simple.kind_of(str(path), info)
-    assert simple.can_convert(kind, simple.ext_of(str(path)), target)
+    # 같은 확장자 제외 규칙과 무관하게 변환 자체가 되는지 보기 위해 원본 확장자는 비워서 검사
+    assert simple.can_convert(kind, "", target)
     out = simple.output_path(str(path), target)
     args = simple.build_args(FF, str(path), str(out), target, info, kind)
     r = subprocess.run(args, capture_output=True)
@@ -78,3 +79,26 @@ def test_rules():
     assert not simple.can_convert("audio", "mp3", "mp4")
     assert simple.can_convert("video", "mp4", "mp3")
     assert simple.can_convert("video", "gif", "png")
+
+
+def test_same_extension_is_not_offered():
+    assert not simple.can_convert("video", "mp4", "mp4")
+    assert not simple.can_convert("image", "png", "png")
+    assert simple.can_convert("image", "jpg", "jpeg")
+
+
+def test_gif_is_both_video_and_image_target():
+    kinds = [k for e, _l, k in simple.FORMATS if e == "gif"]
+    assert sorted(kinds) == ["image", "video"]
+    assert simple.can_convert("video", "mp4", "gif", "video")
+    assert not simple.can_convert("video", "mp4", "gif", "image")
+    assert simple.can_convert("image", "png", "gif", "image")
+    assert not simple.can_convert("image", "png", "gif", "video")
+
+
+def test_thumbnail_for_video_image_and_audio(samples):
+    from core.thumb import grab_thumbnail
+    png = b"\x89PNG"
+    assert grab_thumbnail(FF, str(samples["video"]), 1.0).startswith(png)
+    assert grab_thumbnail(FF, str(samples["image"])).startswith(png)
+    assert grab_thumbnail(FF, str(samples["audio"])) == b""   # 커버가 없는 오디오는 미리보기 없음

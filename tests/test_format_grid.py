@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 from pathlib import Path
 
@@ -19,17 +19,17 @@ def app():
 
 def test_defaults_per_kind(app):
     g = FormatGrid()
-    g.rebuild(lambda e: simple.TARGET_KIND[e] == "video")
+    g.rebuild(lambda e, k: k == "video")
     assert g.current() == "mp4"
-    g.rebuild(lambda e: simple.TARGET_KIND[e] == "image")
+    g.rebuild(lambda e, k: k == "image")
     assert g.current() == "png"
-    g.rebuild(lambda e: simple.TARGET_KIND[e] == "audio")
+    g.rebuild(lambda e, k: k == "audio")
     assert g.current() == "mp3"
 
 
 def test_search_filters_and_enter_picks_first(app):
     g = FormatGrid()
-    g.rebuild(lambda e: True)
+    g.rebuild(lambda e, k: True)
     g.filter("mp")
     sec_chips = {e: b for s in g._sections for e, b in s.chips.items()}
     assert not sec_chips["mp4"].isHidden() and not sec_chips["mp3"].isHidden()
@@ -46,7 +46,8 @@ def test_search_filters_and_enter_picks_first(app):
 
 def test_selection_kept_when_still_allowed(app):
     g = FormatGrid()
-    g.rebuild(lambda e: True)
+    g.rebuild(lambda e, k: True)
     g.select("flac")
-    g.rebuild(lambda e: simple.TARGET_KIND[e] in ("video", "audio"))
+    g.rebuild(lambda e, k: k in ("video", "audio"))
     assert g.current() == "flac"
+
