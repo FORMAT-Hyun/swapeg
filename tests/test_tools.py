@@ -344,3 +344,69 @@ def test_chain_step_fails_cleanly_when_previous_output_is_missing(media):
     plans = tools.plan_chain(steps, FF, [item(media["a"])], "", "original", None, str(media["dir"]), FP)
     with pytest.raises(tools.ToolError):
         plans[1].prepare(plans[1])                                  # 첫 단계를 돌리지 않았으니 결과가 없다
+
+
+# ------------------------------------------------------------------ 여러 종류를 한꺼번에 (plan_all)
+def _step(tid, **over):
+    t = tools.tool_by_id(tid)
+    return t, {**tools.defaults(t), **over}
+
+
+def _exec(plans):
+    outs = []
+    for pl in plans:
+        if pl.prepare:
+            pl.prepare(pl)
+        r = subprocess.run(pl.args, capture_output=True)
+        assert r.returncode == 0, r.stderr.decode("utf-8", "replace")[-500:]
+        if pl.final:
+            outs.append(Path(pl.output))
+    return outs
+
+
+def test_plan_all_edit_then_convert_to_other_kind(media):
+    tmp = media["dir"] / "pa1"
+    tmp.mkdir()
+    plans, notes = tools.plan_all([_step("v_trim", start="1", end="3"), _step("convert", target="mp3")],
+                                  FF, [item(media["v"])], "original", None, str(tmp), FP)
+    outs = _exec(plans)
+    assert not notes and len(outs) == 1 and outs[0].suffix == ".mp3"
+    assert probe(FP, str(outs[0])).duration == pytest.approx(2.0, abs=0.4)
+
+
+def test_plan_all_edit_saves_directly_in_same_kind_format(media):
+    tmp = media["dir"] / "pa2"
+    tmp.mkdir()
+    plans, _ = tools.plan_all([_step("v_trim", start="1", end="3"), _step("convert", target="webm")],
+                              FF, [item(media["v"])], "original", None, str(tmp), FP)
+    assert len(plans) == 1 and plans[0].output.endswith(".webm")        # 추가 변환 단계 없이 바로 저장
+
+
+def test_plan_all_mixed_kinds_and_skips(media):
+    tmp = media["dir"] / "pa3"
+    tmp.mkdir()
+    files = [item(media["v"]), item(media["a"]), item(media["img"])]
+    plans, notes = tools.plan_all([_step("a_volume", volume=150), _step("p_rotate", rotate="90")],
+                                  FF, files, "original", None, str(tmp), FP)
+    outs = _exec(plans)
+    assert sorted(o.suffix for o in outs) == [".png", ".wav"]            # 음악, 사진만 적용
+    assert len(notes) == 1 and "영상" in notes[0][0]                      # 동영상은 고른 도구가 없어 건너뜀
+
+
+def test_plan_all_convert_only_and_same_format(media):
+    tmp = media["dir"] / "pa4"
+    tmp.mkdir()
+    plans, notes = tools.plan_all([_step("convert", target="jpg")], FF,
+                                  [item(media["img"]), item(media["v"])], "original", None, str(tmp), FP)
+    assert len(plans) == 1 and plans[0].output.endswith(".jpg")         # 사진만 바뀐다
+    assert len(notes) == 1 and "영상" in notes[0][0]                     # 동영상은 jpg 로 못 바꾼다
+    # 사진은 이미 png 라서 바꿀 게 없으면 오류
+    with pytest.raises(tools.ToolError):
+        tools.plan_all([_step("convert", target="png")], FF, [item(media["img"])], "original", None, str(tmp), FP)
+
+
+def test_plan_all_needs_a_target_and_tools(media):
+    with pytest.raises(tools.ToolError):
+        tools.plan_all([_step("convert", target="")], FF, [item(media["v"])])
+    with pytest.raises(tools.ToolError):
+        tools.plan_all([], FF, [item(media["v"])])

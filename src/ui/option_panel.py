@@ -134,10 +134,20 @@ class OptionPanel(QWidget):
         return w
 
     def _build_check(self, f: tools.Field) -> QWidget:
-        c = QCheckBox(tr(f.label))
+        c = QCheckBox()
         c.setChecked(bool(self._vals[f.key]))
         c.toggled.connect(lambda on, k=f.key: self._set(k, on))
-        return c
+        text = QLabel(tr(f.label))                  # 긴 문장은 줄바꿈되도록 라벨을 따로 둔다
+        text.setWordWrap(True)
+        text.setCursor(Qt.PointingHandCursor)
+        text.mousePressEvent = lambda _e: c.toggle()
+        w = QWidget()
+        row = QHBoxLayout(w)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        row.addWidget(c, 0, Qt.AlignTop)
+        row.addWidget(text, 1)
+        return w
 
     def _build_note(self, f: tools.Field) -> QWidget:
         n = QLabel(tr(f.label))

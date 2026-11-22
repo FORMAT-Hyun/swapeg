@@ -52,12 +52,6 @@ def test_tool_specs_have_english():
     assert not missing, missing
 
 
-def test_main_window_guides_have_english():
-    from ui.main_window import MainWindow
-    for text in MainWindow._MDROP_GUIDE.values():
-        assert text in EN
-
-
 def test_placeholders_match():
     for ko, en in EN.items():
         assert sorted(re.findall(r"\{\w+(?::[^}]*)?\}", ko)) == sorted(re.findall(r"\{\w+(?::[^}]*)?\}", en)), ko
@@ -105,7 +99,6 @@ def test_english_ui_shows_no_korean_anywhere():
     from core.probe import MediaInfo
     from core.thumb import Thumbs
     from ui.about_dialog import AboutDialog
-    from ui.format_dialog import FormatDialog
     from ui.tool_page import ToolPage
 
     app = QApplication.instance() or QApplication([])
@@ -119,18 +112,14 @@ def test_english_ui_shows_no_korean_anywhere():
             "audio": {"path": "a.mp3", "kind": "audio", "info": MediaInfo(duration=10, acodec="mp3")},
             "photo": {"path": "a.png", "kind": "image", "info": MediaInfo(width=100, height=80, vcodec="png")},
         }
-        for module in ("video", "audio", "photo"):
-            page.open(module, [items[module]])
-            for i in range(len(page.tools)):
-                page._select_tool(i)
-                bad += [t for t in _all_texts(page) if re.search(r"[가-힣]", t)]
-            bad += [t for t in _all_texts(FormatDialog(module, "")) if re.search(r"[가-힣]", t)]
+        page.open(list(items.values()))                 # 세 종류를 한꺼번에 넣어 모든 도구 묶음을 연다
+        for i in range(len(page.tools)):
+            page._select_tool(i)
+            bad += [t for t in _all_texts(page) if re.search(r"[가-힣]", t)]
         bad += [t for t in _all_texts(AboutDialog()) if re.search(r"[가-힣]", t)]
         from ui.main_window import MainWindow
-        win = MainWindow()                       # 시작 화면, 형식 변환, 모듈 드롭, 진행 화면 포함
-        for module in ("video", "audio", "photo"):
-            win._open_module(module)
-            bad += [t for t in _all_texts(win) if re.search(r"[가-힣]", t)]
+        win = MainWindow()                       # 시작(파일 넣기) 화면, 형식 변환, 진행 화면 포함
+        bad += [t for t in _all_texts(win) if re.search(r"[가-힣]", t)]
         assert not bad, sorted(set(bad))
     finally:
         i18n.set_language("ko")

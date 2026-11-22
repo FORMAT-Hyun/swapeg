@@ -64,7 +64,9 @@ MODULES = {
     "video": ("동영상", "video"),
     "audio": ("음악", "audio"),
     "photo": ("사진", "image"),
+    "convert": ("형식 변환", "swap"),      # 도구 묶음 이름 (화면 구역 제목)
 }
+KIND_MODULE = {"video": "video", "audio": "audio", "image": "photo"}   # 파일 종류 -> 쓸 수 있는 도구 묶음
 MODULE_EXTS = {
     "video": set(simple.VIDEO_SPECS),
     "audio": set(simple.AUDIO_SPECS),
@@ -154,6 +156,9 @@ TOOLS: dict[str, list[Tool]] = {
             Field("size", "seg", "크기", [("10", "10%"), ("20", "20%"), ("30", "30%"), ("50", "50%")], "20"),
         ]),
     ],
+    "convert": [
+        Tool("convert", "convert", "형식 변환", "swap", "변환 시작", "converted", [Field("target", "format")]),
+    ],
 }
 
 
@@ -179,6 +184,8 @@ def defaults(tool: Tool) -> dict:
             p.update(w="", h="")
         elif f.kind == "crop":
             p.update(cw="", ch="", cx="0", cy="0")
+        elif f.kind == "format":
+            p["target"] = ""
     return p
 
 
@@ -247,6 +254,11 @@ def resolve_ext(module: str, src: str, out_ext: str) -> str:
         return out_ext
     e = simple.ext_of(src)
     return e if e in MODULE_EXTS[module] else DEFAULT_EXT[module]
+
+
+def module_of(item: dict) -> str:
+    """파일 종류에 맞는 도구 묶음 (동영상은 동영상 도구, 음악은 음악 도구, 사진은 사진 도구)."""
+    return KIND_MODULE[item["kind"]]
 
 
 def accepts(module: str, item: dict) -> bool:
@@ -666,7 +678,22 @@ def _p_mark(ff, items, p, ext, out):
     return _image_cmd(ff, [it["path"], logo], body, "t", ext, out), None
 
 
+# ===================================================================== 형식 변환
+def _convert(ff, items, p, ext, out):
+    it = items[0]
+    target = (p.get("target") or "").strip()
+    if not target:
+        raise ToolError(tr("바꿀 형식을 골라 주세요."))
+    src_ext = simple.ext_of(it["path"])
+    if src_ext == target:
+        raise ToolError(tr("이미 같은 형식이에요"))
+    if not simple.can_convert(it["kind"], src_ext, target):
+        raise ToolError(tr("이 형식으로는 바꿀 수 없어요"))
+    return simple.build_args(ff, it["path"], out, target, it["info"], it["kind"], "original"), it["info"].duration
+
+
 _BUILDERS = {
+    "convert": _convert,
     "v_trim": _v_trim, "v_merge": _v_merge, "v_transform": _v_transform, "v_speed": _v_speed,
     "v_audio": _v_audio, "v_subs": _v_subs,
     "a_trim": _a_trim, "a_merge": _a_merge, "a_volume": _a_volume, "a_speed": _a_speed,
@@ -679,10 +706,12 @@ _BUILDERS = {
 #  - 합치기가 맨 앞 (그 뒤의 자르기 시간 등은 합친 결과 기준)
 #  - 영상에 입히는 자막은 원본 시간 기준이라 자르기/속도보다 먼저, 트랙 자막은 다른 단계가 지워 버리므로 맨 마지막
 #  - 사진은 크롭 좌표가 원본 기준이라 크롭이 먼저, 워터마크는 최종 크기 기준이라 맨 마지막
+#  - 형식 변환은 모든 편집이 끝난 뒤
 _RANK = {
     "v_merge": 0, "v_trim": 2, "v_transform": 3, "v_speed": 4, "v_audio": 5,
     "a_merge": 0, "a_trim": 1, "a_volume": 2, "a_speed": 3,
     "p_crop": 0, "p_rotate": 1, "p_resize": 2, "p_mark": 3,
+    "convert": 99,
 }
 # 단계 사이에 넘기는 임시 파일 형식 (무손실에 가깝게)
 INTERMEDIATE_EXT = {"video": "mkv", "audio": "flac", "photo": "png"}
@@ -698,13 +727,15 @@ def order_steps(steps: list[tuple[Tool, dict]]) -> list[tuple[Tool, dict]]:
     return sorted(steps, key=lambda s: step_rank(*s))
 
 
-def _virtual_item(group: list[dict], merged: bool) -> dict:
-    """뒷 단계를 미리 검사할 때 쓰는 가상의 입력 (합치기 뒤라면 길이는 모두 더한 값)."""
+def _virtual_item(group: list[dict], merged: bool, ext: str | None) -> dict:
+    """뒷 단계를 미리 검사할 때 쓰는 가상의 입력: 앞 단계가 만들 임시 파일처럼 보이게 한다."""
     first = group[0]
-    if not merged:
-        return first
-    total = sum((i["info"].duration or 0.0) for i in group)
-    return {**first, "info": replace(first["info"], duration=total or None)}
+    info = first["info"]
+    if merged:
+        total = sum((i["info"].duration or 0.0) for i in group)
+        info = replace(info, duration=total or None)
+    path = f"virtual.{ext}" if ext else first["path"]
+    return {**first, "path": path, "info": info}
 
 
 def _prepare_step(prev: Plan, build, ffmpeg: str, ffprobe: str, params: dict, ext: str, quality: str):
@@ -726,37 +757,48 @@ def _probe(ffprobe: str, path: str):
 def plan_chain(steps: list[tuple[Tool, dict]], ffmpeg: str, items: list[dict], out_ext: str = "",
                quality: str = "original", out_dir: str | None = None, tmp_dir: str | None = None,
                ffprobe: str | None = None) -> list[Plan]:
-    """고른 도구들을 정해진 순서로 이어 붙인 실행 계획을 만든다 (파일마다 단계 수만큼 Plan).
-    입력 오류는 모든 단계를 미리 검사해서 실행 전에 ToolError 로 알린다.
+    """같은 종류의 파일들에 고른 도구들을 정해진 순서로 이어 붙인 실행 계획 (파일마다 단계 수만큼 Plan).
+    steps 맨 끝에는 형식 변환(convert)이 올 수 있다. 입력 오류는 모든 단계를 미리 검사해서 ToolError 로 알린다.
     두 단계 이상이면 임시 파일을 tmp_dir 에 두고 ffprobe 로 앞 단계 결과를 읽어 다음 명령을 만든다."""
     if not items:
         raise ToolError(tr("파일을 먼저 넣어 주세요."))
     if not steps:
         raise ToolError(tr("적용할 도구를 체크해 주세요."))
-    module = steps[0][0].module
     steps = order_steps(steps)
+    conv = steps[-1] if steps[-1][0].id == "convert" else None
+    edits = steps[:-1] if conv else steps
+    module = edits[0][0].module if edits else None
     if len(steps) > 1 and not (tmp_dir and ffprobe):
         raise ValueError("tmp_dir and ffprobe are required for chained tools")
-    bad = [Path(i["path"]).name for i in items if not accepts(module, i)]
-    if bad:
-        raise ToolError(tr("이 도구로 다룰 수 없는 파일이 있어요: {names}", names=", ".join(bad)))
-    merged = steps[0][0].multi
+    if module:
+        bad = [Path(i["path"]).name for i in items if not accepts(module, i)]
+        if bad:
+            raise ToolError(tr("이 도구로 다룰 수 없는 파일이 있어요: {names}", names=", ".join(bad)))
+    merged = bool(edits) and edits[0][0].multi
     groups = [items] if merged else [[i] for i in items]
     n = len(steps)
     suffix = steps[0][0].suffix if n == 1 else "edit"
+    inter = INTERMEDIATE_EXT[module] if module else None
     plans: list[Plan] = []
     for gi, g in enumerate(groups):
-        final_ext = resolve_ext(module, g[0]["path"], out_ext)
-        if final_ext not in MODULE_EXTS[module]:
-            raise ToolError(tr("이 형식은 사용할 수 없어요."))
-        virt = _virtual_item(g, merged)
+        if conv:
+            final_ext = (conv[1].get("target") or "").strip()
+        else:
+            final_ext = resolve_ext(module, g[0]["path"], out_ext)
+            if final_ext not in MODULE_EXTS[module]:
+                raise ToolError(tr("이 형식은 사용할 수 없어요."))
+        virt = _virtual_item(g, merged, inter)
         prev: Plan | None = None
         for si, (tool, params) in enumerate(steps):
             last = si == n - 1
-            ext = final_ext if last else INTERMEDIATE_EXT[module]
+            ext = final_ext if last else inter
             q = quality if last else "original"
-            out = (output_path(g[0]["path"], suffix, ext, out_dir) if last
-                   else Path(tmp_dir) / f"g{gi}_s{si}.{ext}")
+            if not last:
+                out = Path(tmp_dir) / f"g{gi}_s{si}.{ext}"
+            elif n == 1 and conv:
+                out = simple.output_path(g[0]["path"], ext, out_dir)       # 형식만 바꿀 때는 원래 이름 그대로
+            else:
+                out = output_path(g[0]["path"], suffix, ext, out_dir)
             build = _BUILDERS[tool.id]
             args, dur = build(ffmpeg, g if si == 0 else [virt], params, ext, str(out))   # 뒷 단계는 검사용
             plan = Plan(simple._tune(args, q) if si == 0 else [], str(out), dur, g[0],
@@ -772,3 +814,67 @@ def plan_jobs(tool: Tool, ffmpeg: str, items: list[dict], params: dict, out_ext:
               quality: str = "original", out_dir: str | None = None) -> list[Plan]:
     """도구 하나만 쓰는 실행 계획 (plan_chain 의 단일 단계 버전)."""
     return plan_chain([(tool, params)], ffmpeg, items, out_ext, quality, out_dir)
+
+
+def plan_all(steps: list[tuple[Tool, dict]], ffmpeg: str, items: list[dict], quality: str = "original",
+             out_dir: str | None = None, tmp_dir: str | None = None,
+             ffprobe: str | None = None) -> tuple[list[Plan], list[tuple[str, str]]]:
+    """여러 종류의 파일을 한꺼번에: 파일은 종류별로(동영상/음악/사진) 그 종류의 체크한 도구만 적용받고,
+    형식 변환을 체크했으면 마지막에 바꿀 수 있는 파일에만 적용된다.
+    돌려주는 값: (실행 계획들, [(파일 이름, 건너뛴 이유)])."""
+    if not items:
+        raise ToolError(tr("파일을 먼저 넣어 주세요."))
+    if not steps:
+        raise ToolError(tr("적용할 도구를 체크해 주세요."))
+    conv = next((s for s in steps if s[0].id == "convert"), None)
+    target = (conv[1].get("target") or "").strip() if conv else ""
+    if conv and not target:
+        raise ToolError(tr("바꿀 형식을 골라 주세요."))
+    by_module: dict[str, list[dict]] = {}
+    for it in items:
+        by_module.setdefault(module_of(it), []).append(it)
+    plans: list[Plan] = []
+    notes: list[tuple[str, str]] = []
+    part, groups_done = 0, 0
+    for module in ("video", "audio", "photo"):
+        files = by_module.get(module, [])
+        edits = order_steps([s for s in steps if s[0].module == module])
+        if not files:
+            continue
+        if not edits and not conv:
+            notes += [(Path(f["path"]).name, tr("이 파일에 적용할 도구가 선택되지 않았어요")) for f in files]
+            continue
+        groups = [files] if edits and edits[0][0].multi else [[f] for f in files]
+        for g in groups:
+            src = g[0]
+            name = Path(src["path"]).name
+            use, out_ext = list(edits), ""
+            if target:
+                if edits:
+                    if target in MODULE_EXTS[module]:
+                        out_ext = target                                   # 마지막 편집이 바로 그 형식으로 저장
+                    elif simple.can_convert(src["kind"], "", target):
+                        use.append(conv)                                   # 종류가 바뀌는 변환은 마지막 단계로
+                    else:
+                        notes.append((name, tr("이 형식으로는 바꿀 수 없어요")))
+                elif simple.ext_of(src["path"]) == target:
+                    notes.append((name, tr("이미 같은 형식이에요")))
+                    continue
+                elif simple.can_convert(src["kind"], simple.ext_of(src["path"]), target):
+                    use = [conv]
+                else:
+                    notes.append((name, tr("이 형식으로는 바꿀 수 없어요")))
+                    continue
+            sub = None
+            if len(use) > 1:
+                sub = str(Path(tmp_dir) / f"p{part}")
+                Path(sub).mkdir(parents=True, exist_ok=True)
+                part += 1
+            built = plan_chain(use, ffmpeg, g, out_ext, quality, out_dir, sub, ffprobe)
+            for pl in built:                       # plan_chain 은 한 번에 결과 하나(group 0)를 만든다
+                pl.group = groups_done
+            groups_done += 1
+            plans += built
+    if not plans:
+        raise ToolError(notes[0][1] if notes else tr("선택한 도구를 적용할 수 있는 파일이 없어요."))
+    return plans, notes

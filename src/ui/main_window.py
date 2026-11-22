@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QProcess, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
+    QApplication, QFileDialog, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
     QProgressBar, QProgressDialog, QPushButton, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
 
@@ -21,17 +21,15 @@ from core.runner import Job, JobRunner
 from core.thumb import Thumbs
 from ui import icons
 from ui.about_dialog import AboutDialog
-from ui.format_grid import FormatGrid
 from ui.preview import PreviewCard
 from ui.settings_dialog import SettingsDialog, load as load_settings
 from ui.tool_page import ToolPage
 
-PAGE_HOME, PAGE_DROP, PAGE_PICK, PAGE_RUN, PAGE_MDROP, PAGE_TOOL = range(6)
-KIND_MODULE = {"video": "video", "audio": "audio", "image": "photo"}   # 파일 종류 -> 자동 추천 모듈
+PAGE_DROP, PAGE_RUN, PAGE_TOOL = range(3)
 
 
 class MainWindow(QMainWindow):
-    """시작 화면에서 모듈을 고른다: 형식 변환(파일 -> 형식 -> 진행) / 동영상 / 음악 / 사진(파일 -> 도구 -> 진행)."""
+    """파일을 넣으면 하나의 도구 화면이 열린다: 동영상 / 음악 / 사진 / 형식 변환 도구를 체크박스로 골라 한 번에 적용."""
 
     @staticmethod
     def _drop_guide_text() -> str:
@@ -54,9 +52,7 @@ class MainWindow(QMainWindow):
         self._last_err = ""
         self._last_dir = ""
         self._cancelled = False
-        self._module = ""                  # 지금 열려 있는 편집 모듈 (video/audio/photo)
-        self._from_tool = False            # 마지막 실행이 편집 도구에서 시작됐는지
-        self._plans: list = []             # 편집 도구 실행 계획 (작업마다 하나, 변환기에서는 비어 있음)
+        self._plans: list = []             # 실행 계획 (작업마다 하나)
         self._failed_groups: set[int] = set()
         self._tmp_dir: str | None = None   # 여러 도구를 이어 쓸 때 단계 사이의 임시 폴더
 
@@ -70,20 +66,18 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
-        self.stack.addWidget(self._build_home_page())        # PAGE_HOME
-        self.stack.addWidget(self._build_drop_page())        # PAGE_DROP  (형식 변환: 파일 넣기)
-        self.stack.addWidget(self._build_pick_page())        # PAGE_PICK  (형식 변환: 형식 고르기)
-        self.stack.addWidget(self._build_run_page())         # PAGE_RUN   (진행/결과, 모두 공용)
-        self.stack.addWidget(self._build_module_drop_page())  # PAGE_MDROP (편집 모듈: 파일 넣기)
-        self.tool_page = ToolPage(self.thumbs)               # PAGE_TOOL  (편집 모듈: 도구)
+        self.stack.addWidget(self._build_drop_page())        # PAGE_DROP  (시작: 파일 넣기)
+        self.stack.addWidget(self._build_run_page())         # PAGE_RUN   (진행/결과)
+        self.tool_page = ToolPage(self.thumbs, self.settings.value("last_format", None))   # PAGE_TOOL (도구 고르기)
         self.tool_page.back_requested.connect(self._reset)
         self.tool_page.settings_requested.connect(self._open_settings)
         self.tool_page.about_requested.connect(lambda: AboutDialog(self).exec())
-        self.tool_page.convert_requested.connect(self._enter_pick)
         self.tool_page.add_files_requested.connect(self._add_dialog)
         self.tool_page.run_requested.connect(self._run_tool)
+        self.tool_page.convert_panel.changed.connect(      # 사용자가 고른 형식은 다음에도 먼저 보여 준다
+            lambda: self.settings.setValue("last_format", self.tool_page.convert_panel.values()["target"]))
         self.stack.addWidget(self.tool_page)
-        self.stack.setCurrentIndex(PAGE_HOME)
+        self.stack.setCurrentIndex(PAGE_DROP)
 
         if not self.ffmpeg or not self.ffprobe:
             QTimer.singleShot(300, self._offer_install)
@@ -96,137 +90,6 @@ class MainWindow(QMainWindow):
         v.setSpacing(14)
         return w, v
 
-    def _back_button(self) -> QPushButton:
-        b = QPushButton(tr("처음으로"))
-        b.setProperty("ghost", True)
-        b.setIcon(icons.icon("back"))
-        b.setIconSize(QSize(18, 18))
-        b.clicked.connect(self._reset)
-        return b
-
-    def _build_home_page(self) -> QWidget:
-        w = QWidget()
-        v = QVBoxLayout(w)
-        v.setContentsMargins(28, 22, 28, 22)
-        v.setSpacing(16)
-        head = QHBoxLayout()
-        logo = QLabel()
-        logo.setPixmap(QPixmap(str(app_dir() / "assets" / "icon.png")).scaled(
-            34, 34, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        title = QLabel("Swapeg")
-        title.setObjectName("Title")
-        head.addWidget(logo)
-        head.addWidget(title)
-        head.addStretch(1)
-        head.addWidget(self._info_button())
-        head.addWidget(self._gear_button())
-        v.addLayout(head)
-
-        sub = QLabel(tr("무엇을 할까요? 모듈을 고르거나, 파일을 바로 끌어다 놓으세요."))
-        sub.setObjectName("Muted")
-        v.addWidget(sub)
-
-        grid = QGridLayout()
-        grid.setSpacing(14)
-        cards = [
-            ("swap", "형식 변환", tr("{n}개 형식으로 바꾸기", n=len(simple.TARGET_KIND)), "convert"),
-            ("video", "동영상", tr("자르기 · 합치기 · 크기 · 속도 · 소리 · 자막"), "video"),
-            ("audio", "음악", tr("자르기 · 합치기 · 볼륨 · 속도"), "audio"),
-            ("image", "사진", tr("크기 · 회전 · 크롭 · 워터마크"), "photo"),
-        ]
-        for i, (icon, name, desc, key) in enumerate(cards):
-            grid.addWidget(self._card(icon, name, desc, key), i // 2, i % 2)
-        grid.setRowStretch(0, 1)
-        grid.setRowStretch(1, 1)
-        v.addLayout(grid, 1)
-
-        self.home_msg = QLabel("")
-        self.home_msg.setObjectName("Error")
-        self.home_msg.setAlignment(Qt.AlignCenter)
-        self.home_msg.setWordWrap(True)
-        v.addWidget(self.home_msg)
-        return w
-
-    def _card(self, icon: str, name: str, desc: str, key: str) -> QPushButton:
-        c = QPushButton()
-        c.setProperty("card", True)
-        c.setCursor(Qt.PointingHandCursor)
-        c.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        lay = QVBoxLayout(c)
-        lay.setContentsMargins(20, 18, 20, 18)
-        ic = QLabel()
-        ic.setPixmap(icons.pixmap(icon, icons.GREEN, 44, 1.6))
-        t = QLabel(tr(name))
-        t.setObjectName("CardTitle")
-        d = QLabel(desc)
-        d.setObjectName("Muted")
-        d.setWordWrap(True)
-        lay.addStretch(1)
-        for lab in (ic, t, d):
-            lab.setAttribute(Qt.WA_TransparentForMouseEvents)
-            lay.addWidget(lab)
-        lay.addStretch(1)
-        c.clicked.connect(lambda: self._open_module(key))
-        return c
-
-    def _build_module_drop_page(self) -> QWidget:
-        w = QWidget()
-        outer = QVBoxLayout(w)
-        outer.setContentsMargins(28, 22, 28, 22)
-        outer.setSpacing(14)
-        head = QHBoxLayout()
-        head.addWidget(self._back_button())
-        self.mdrop_icon = QLabel()
-        self.mdrop_title = QLabel()
-        self.mdrop_title.setObjectName("ToolTitle")
-        head.addWidget(self.mdrop_icon)
-        head.addWidget(self.mdrop_title)
-        head.addStretch(1)
-        head.addWidget(self._info_button())
-        head.addWidget(self._gear_button())
-        outer.addLayout(head)
-        zone = QPushButton()
-        zone.setObjectName("DropZone")
-        zone.setCursor(Qt.PointingHandCursor)
-        zone.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        zone.clicked.connect(self._add_dialog)
-        inner = QVBoxLayout(zone)
-        inner.addStretch(1)
-        self.mdrop_art = QLabel()
-        self.mdrop_guide = QLabel()
-        self.mdrop_guide.setObjectName("DropGuide")
-        for lab in (self.mdrop_art, self.mdrop_guide):
-            lab.setAlignment(Qt.AlignCenter)
-            lab.setAttribute(Qt.WA_TransparentForMouseEvents)
-            inner.addWidget(lab)
-        inner.addStretch(1)
-        outer.addWidget(zone, 1)
-        return w
-
-    _MDROP_GUIDE = {
-        "video": "동영상 파일을 끌어다 놓거나 눌러서 선택하세요",
-        "audio": "음악 파일을 끌어다 놓거나 눌러서 선택하세요",
-        "photo": "사진 파일을 끌어다 놓거나 눌러서 선택하세요",
-    }
-
-    def _mdrop_guide_text(self) -> str:
-        return tr(self._MDROP_GUIDE[self._module])
-
-    def _open_module(self, key: str) -> None:
-        self.items.clear()
-        self.home_msg.setText("")
-        if key == "convert":
-            self.drop_guide.setText(self._drop_guide_text())
-            self.stack.setCurrentIndex(PAGE_DROP)
-            return
-        self._module = key
-        name, icon = tools.MODULES[key]
-        self.mdrop_title.setText(tr(name))
-        self.mdrop_icon.setPixmap(icons.pixmap(icon, icons.GREEN, 22, 1.8))
-        self.mdrop_art.setPixmap(icons.pixmap(icon, icons.GREEN, 84, 1.5))
-        self.mdrop_guide.setText(self._mdrop_guide_text())
-        self.stack.setCurrentIndex(PAGE_MDROP)
-
     def _build_drop_page(self) -> QWidget:
         # 제목은 왼쪽 위(드롭 구역 밖), 그 아래 나머지 창 전체가 드롭 구역. 구역 안에는 안내문만 둔다.
         w = QWidget()
@@ -234,7 +97,6 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(28, 22, 28, 22)
         outer.setSpacing(14)
         head = QHBoxLayout()
-        head.addWidget(self._back_button())
         logo = QLabel()
         logo.setPixmap(QPixmap(str(app_dir() / "assets" / "icon.png")).scaled(
             34, 34, Qt.KeepAspectRatio, Qt.SmoothTransformation))
@@ -302,59 +164,6 @@ class MainWindow(QMainWindow):
         b.setCursor(Qt.PointingHandCursor)
         b.clicked.connect(lambda: AboutDialog(self).exec())
         return b
-
-    def _build_pick_page(self) -> QWidget:
-        w, v = self._page()
-        top = QHBoxLayout()
-        back = QPushButton(tr("처음으로"))
-        back.setProperty("ghost", True)
-        back.setIcon(icons.icon("back"))
-        back.setIconSize(QSize(18, 18))
-        back.clicked.connect(self._reset)
-        self.search = QLineEdit()
-        self.search.setPlaceholderText(tr("검색  (예: mp3, 영상, 이미지)"))
-        self.search.setClearButtonEnabled(True)
-        self.search.setFixedWidth(260)
-        self.search.addAction(icons.icon("search", icons.MUTED), QLineEdit.LeadingPosition)
-        top.addWidget(back)
-        top.addStretch(1)
-        top.addWidget(self.search)
-        top.addWidget(self._info_button())
-        top.addWidget(self._gear_button())
-        v.addLayout(top)
-
-        self.grid = FormatGrid()
-        self.grid.set_preferred(self.settings.value("last_format", None))
-        self.grid.changed.connect(self._on_format_changed)
-        self.search.textChanged.connect(self.grid.filter)
-        self.search.returnPressed.connect(self._search_enter)
-
-        # 왼쪽: 넣은 파일 미리보기, 오른쪽: 형식 상자들
-        body = QHBoxLayout()
-        body.setSpacing(18)
-        self.pick_card = PreviewCard(self.thumbs, (200, 130))
-        left = QVBoxLayout()
-        left.addWidget(self.pick_card)
-        left.addStretch(1)
-        body.addLayout(left)
-        body.addWidget(self.grid, 1)
-        v.addLayout(body, 1)
-
-        bottom = QHBoxLayout()
-        b_more = QPushButton(tr("파일 추가"))
-        b_more.setIcon(icons.icon("plus"))
-        b_more.clicked.connect(self._add_dialog)
-        self.btn_go = QPushButton(tr("변환"))
-        self.btn_go.setIcon(icons.icon("swap", icons.MINT_DARK))
-        self.btn_go.setIconSize(QSize(20, 20))
-        self.btn_go.setProperty("primary", True)
-        self.btn_go.setMinimumWidth(150)
-        self.btn_go.clicked.connect(self._start)
-        bottom.addWidget(b_more)
-        bottom.addStretch()
-        bottom.addWidget(self.btn_go)
-        v.addLayout(bottom)
-        return w
 
     def _build_run_page(self) -> QWidget:
         w, v = self._page()
@@ -430,8 +239,7 @@ class MainWindow(QMainWindow):
         if self.runner.running or self.stack.currentIndex() == PAGE_RUN:
             return
         page = self.stack.currentIndex()
-        module = self._module if page in (PAGE_MDROP, PAGE_TOOL) else ""
-        unreadable, unsuitable = [], []
+        unreadable = []
         added = 0
         for p in paths:
             if not Path(p).is_file() or any(it["path"] == p for it in self.items):
@@ -440,122 +248,37 @@ class MainWindow(QMainWindow):
             if self.ffprobe and info.vcodec is None and info.acodec is None:
                 unreadable.append(Path(p).name)  # ffmpeg가 읽을 수 없는 파일
                 continue
-            item = {"path": p, "info": info, "kind": simple.kind_of(p, info)}
-            if module and not tools.accepts(module, item):
-                unsuitable.append(Path(p).name)   # 이 모듈에서 쓸 수 없는 종류
-                continue
-            self.items.append(item)
+            self.items.append({"path": p, "info": info, "kind": simple.kind_of(p, info)})
             self._last_dir = str(Path(p).parent)
             added += 1
-        msg = ""
-        if unreadable:
-            msg = tr("읽을 수 없는 파일: {names}", names=", ".join(unreadable))
-        elif unsuitable:
-            msg = tr("이 모듈에서는 다룰 수 없는 파일: {names}", names=", ".join(unsuitable))
-        if page == PAGE_HOME:
-            self.home_msg.setText(msg)
-        elif page == PAGE_MDROP:
-            self.mdrop_guide.setText(msg or self._mdrop_guide_text())
-        else:
-            self.drop_guide.setText(msg or self._drop_guide_text())
+        msg = tr("읽을 수 없는 파일: {names}", names=", ".join(unreadable)) if unreadable else ""
+        self.drop_guide.setText(msg or self._drop_guide_text())
         if not self.items:
             return
-        if page == PAGE_HOME and added:
-            kinds = {it["kind"] for it in self.items}
-            if len(kinds) == 1:                      # 한 종류면 알맞은 편집 모듈로, 섞여 있으면 형식 변환으로
-                self._enter_tool(KIND_MODULE[kinds.pop()])
-            else:
-                self._enter_pick()
-        elif page in (PAGE_MDROP, PAGE_TOOL):
-            if added or page == PAGE_TOOL:
-                self._enter_tool(self._module)
-        elif added or page == PAGE_PICK:
-            self._enter_pick()
+        if page == PAGE_DROP and added:
+            self._enter_tool(fresh=True)
+        elif page == PAGE_TOOL and added:
+            self._enter_tool(fresh=False)             # 파일을 더 넣어도 체크한 도구는 그대로
 
-    def _enter_tool(self, module: str) -> None:
-        self._module = module
-        self.tool_page.open(module, self.items)
+    def _enter_tool(self, fresh: bool) -> None:
+        self.tool_page.open(self.items, fresh)
         self.stack.setCurrentIndex(PAGE_TOOL)
 
-    # ================================================================ 형식 고르기
-    def _enter_pick(self) -> None:
-        n = len(self.items)
-        first = self.items[0]
-        name = Path(first["path"]).name
-        sub = first["info"].summary()
-        self.pick_card.show_file(first["path"], name if n == 1 else tr("{name} 외 {n}개", name=name, n=n - 1),
-                                 sub, self._seek_hint(first))
-        self.search.clear()
-        # 원본과 같은 확장자는 목록에서 뺀다 (mp4 파일에 MP4로 바꾸기 같은 건 의미가 없으므로)
-        self.grid.rebuild(lambda ext, tk: any(
-            simple.can_convert(it["kind"], simple.ext_of(it["path"]), ext, tk) for it in self.items))
-        self.stack.setCurrentIndex(PAGE_PICK)
-
+    # ================================================================ 진행 화면 보조
     @staticmethod
     def _seek_hint(item: dict) -> float:
         """영상은 처음 검은 화면을 피하려고 20% 지점의 프레임을 쓴다."""
         d = item["info"].duration
         return min(d * 0.2, 10.0) if item["kind"] == "video" and d else 0.0
 
-    def _on_format_changed(self, ext: str) -> None:
-        if ext:
-            self.settings.setValue("last_format", ext)
-        self.btn_go.setEnabled(bool(ext))
-        self.btn_go.setText(tr("{fmt}(으)로 변환", fmt=simple.label_of(ext)) if ext else tr("변환"))
-
-    def _search_enter(self) -> None:
-        ext = self.grid.first_visible()
-        if ext:
-            self.grid.select(ext)
-
     def _reset(self) -> None:
         if self.runner.running:
             return
         self.items.clear()
         self.drop_guide.setText(self._drop_guide_text())
-        self.home_msg.setText("")
-        self.stack.setCurrentIndex(PAGE_HOME)
+        self.stack.setCurrentIndex(PAGE_DROP)
 
-    # ================================================================ 변환
-    def _start(self) -> None:
-        if not self.ffmpeg:
-            self._offer_install()
-            return
-        target = self.grid.current()
-        if not target or not self.items:
-            return
-        cfg = load_settings(self.settings)
-        out_dir = cfg["out_dir"] if cfg["out_mode"] == "custom" and cfg["out_dir"] else None
-        if out_dir:
-            try:
-                Path(out_dir).mkdir(parents=True, exist_ok=True)
-            except OSError as e:
-                QMessageBox.warning(self, tr("저장 위치"), tr("저장 폴더를 만들 수 없습니다.\n{err}", err=e))
-                return
-        jobs, self._job_files, self._results, self._outs = [], [], [], []
-        self._plans, self._failed_groups = [], set()
-        self._ok_outs: list[str] = []
-        for it in self.items:
-            src = it["path"]
-            name = Path(src).name
-            if simple.ext_of(src) == target:
-                self._results.append((name, False, tr("이미 같은 형식이에요")))
-                continue
-            if not simple.can_convert(it["kind"], simple.ext_of(src), target):
-                self._results.append((name, False, tr("이 형식으로는 바꿀 수 없어요")))
-                continue
-            out = simple.output_path(src, target, out_dir)
-            args = simple.build_args(self.ffmpeg, src, str(out), target, it["info"], it["kind"],
-                                     cfg["quality"])
-            jobs.append(Job(args, str(out), it["info"].duration))
-            self._job_files.append(it)
-            self._outs.append(str(out))
-        if not jobs:
-            QMessageBox.information(self, tr("알림"), tr("선택한 형식으로 바꿀 수 있는 파일이 없습니다."))
-            return
-        self._launch(jobs, from_tool=False)
-
-    def _run_tool(self, steps: list, items: list, out_ext: str) -> None:
+    def _run_tool(self, steps: list, items: list) -> None:
         """편집 도구 실행: 체크한 도구들을 검증해 순서대로 이어 붙인 ffmpeg 명령을 만들고 진행 화면으로 넘어간다."""
         if not self.ffmpeg or not self.ffprobe:
             self._offer_install()
@@ -577,7 +300,7 @@ class MainWindow(QMainWindow):
             except OSError:
                 tmp = tempfile.mkdtemp(prefix="swapeg-")
         try:
-            plans = tools.plan_chain(steps, self.ffmpeg, items, out_ext, cfg["quality"], out_dir, tmp, self.ffprobe)
+            plans, notes = tools.plan_all(steps, self.ffmpeg, items, cfg["quality"], out_dir, tmp, self.ffprobe)
         except tools.ToolError as e:
             if tmp:
                 shutil.rmtree(tmp, ignore_errors=True)
@@ -586,8 +309,9 @@ class MainWindow(QMainWindow):
         self._tmp_dir = tmp
         self._plans = plans
         self._failed_groups = set()
-        self._results, self._job_files, self._outs = [], [p.src for p in plans], [p.output for p in plans]
-        self._launch([self._job_of(p) for p in plans], from_tool=True)
+        self._results = [(name, False, why) for name, why in notes]    # 건너뛴 파일
+        self._job_files, self._outs = [p.src for p in plans], [p.output for p in plans]
+        self._launch([self._job_of(p) for p in plans])
 
     @staticmethod
     def _job_of(p: "tools.Plan") -> Job:
@@ -604,9 +328,8 @@ class MainWindow(QMainWindow):
             shutil.rmtree(self._tmp_dir, ignore_errors=True)
             self._tmp_dir = None
 
-    def _launch(self, jobs: list, from_tool: bool) -> None:
-        """공용 진행 화면을 열고 작업을 시작한다."""
-        self._from_tool = from_tool
+    def _launch(self, jobs: list) -> None:
+        """진행 화면을 열고 작업을 시작한다."""
         self._ok_outs = []
         self._cancelled = False
         self.run_title.setText(tr("변환 중..."))
@@ -632,8 +355,8 @@ class MainWindow(QMainWindow):
     def _on_job_started(self, i: int) -> None:
         self._last_err = ""
         name = Path(self._job_files[i]["path"]).name
-        plan = self._plans[i] if i < len(self._plans) else None
-        if plan and plan.steps > 1:        # 여러 도구를 이어 쓰는 중: 몇 번째 파일, 어떤 단계인지
+        plan = self._plans[i]
+        if plan.steps > 1:        # 여러 도구를 이어 쓰는 중: 몇 번째 파일, 어떤 단계인지
             groups = max(p.group for p in self._plans) + 1
             self.run_file.setText(f"{name}  ({plan.group + 1}/{groups}) · "
                                   f"{tr(plan.label)} {plan.step + 1}/{plan.steps}")
@@ -657,12 +380,7 @@ class MainWindow(QMainWindow):
         detail = msg
         if not ok and not self._cancelled and self._last_err:
             detail = f"{msg}: {self._last_err[:80]}"   # ffmpeg가 남긴 마지막 오류 줄
-        plan = self._plans[i] if i < len(self._plans) else None
-        if plan is None:                               # 형식 변환: 작업 하나가 파일 하나
-            self._results.append((name, ok, detail))
-            if ok:
-                self._ok_outs.append(self._outs[i])
-            return
+        plan = self._plans[i]
         if ok:
             if plan.final:                             # 중간 단계의 임시 결과는 결과로 세지 않는다
                 self._results.append((name, True, detail))
@@ -679,7 +397,7 @@ class MainWindow(QMainWindow):
         bad = [(n, m) for n, ok, m in self._results if not ok]
         self.btn_cancel.hide()
         self.btn_again.show()
-        self.btn_edit.setVisible(self._from_tool)     # 편집 도구에서 왔으면 같은 파일로 다시 편집 가능
+        self.btn_edit.show()                          # 같은 파일로 다시 도구를 골라 계속할 수 있다
         if done:
             self.btn_open.show()
         if self._cancelled:
@@ -695,8 +413,8 @@ class MainWindow(QMainWindow):
         if self._ok_outs:  # 변환된 결과 미리보기 (여러 개면 첫 번째)
             out = self._ok_outs[0]
             idx = self._outs.index(out)
-            plan = self._plans[idx] if idx < len(self._plans) else None
-            dur = plan.duration if plan and plan.duration else self._job_files[idx]["info"].duration
+            plan = self._plans[idx]
+            dur = plan.duration if plan.duration else self._job_files[idx]["info"].duration
             label = Path(out).name if len(self._ok_outs) == 1 else tr(
                 "{name} 외 {n}개", name=Path(out).name, n=len(self._ok_outs) - 1)
             self.run_cap.setText(tr("결과 미리보기"))

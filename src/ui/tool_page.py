@@ -1,23 +1,25 @@
-"""도구 화면: 미리보기·재생(+구간 막대) / 도구 칩(체크박스) / 옵션 패널 / 저장 형식 / 실행 버튼.
+"""도구 화면: 파일을 넣으면 나오는 하나의 화면.
 
-체크한 도구들은 정해진 순서로 이어서 한 번에 적용된다 (core.tools.plan_chain).
+위쪽/오른쪽에 동영상·음악·사진·형식 변환 도구를 체크박스로 나열하고(넣은 파일 종류에 맞는 묶음만 보인다),
+체크한 도구들은 정해진 순서로 이어서 한 번에 적용된다 (core.tools.plan_all).
+왼쪽은 미리보기·재생(+구간 막대)이다.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QPainter, QPen, QColor, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSlider, QStackedWidget,
-    QStyle, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QSlider,
+    QStackedWidget, QStyle, QVBoxLayout, QWidget,
 )
 
 from core import simple, tools
 from core.i18n import tr
 from core.thumb import Thumbs
 from ui import icons, player as media
-from ui.format_dialog import FormatDialog
+from ui.convert_panel import ConvertPanel
 from ui.format_grid import FlowLayout
 from ui.option_panel import OptionPanel
 from ui.range_bar import RangeBar
@@ -25,7 +27,8 @@ from ui.range_bar import RangeBar
 TRIM_TOOLS = ("v_trim", "a_trim")
 MERGE_TOOLS = ("v_merge", "a_merge")
 CROP_TOOLS = ("v_transform", "p_crop")
-VIEW_W, VIEW_H = 300, 170
+GROUP_ORDER = ("video", "audio", "photo", "convert")
+LEFT_MIN, LEFT_MAX = 340, 600      # 왼쪽(미리보기) 열 너비 범위
 
 
 def fmt_time(sec: float) -> str:
@@ -38,13 +41,31 @@ def fmt_time(sec: float) -> str:
 class ImageBox(QLabel):
     """미리보기 이미지 + 크롭 영역 점선 상자."""
 
-    def __init__(self, w: int, h: int):
+    def __init__(self):
         super().__init__()
         self.setObjectName("PreviewImg")
-        self.setFixedSize(w, h)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)   # 크기는 바깥 틀이 정한다
+        self.setMinimumSize(160, 90)
         self.setAlignment(Qt.AlignCenter)
+        self._src: QPixmap | None = None
         self._media = (0, 0)
         self._crop: tuple | None = None       # ("ratio", r) 또는 ("rect", x, y, w, h)  (원본 픽셀)
+
+    def set_source(self, pm: QPixmap | None) -> None:
+        """원본 썸네일을 보관해 두고 상자 크기에 맞게 다시 그린다."""
+        self._src = pm if pm is not None and not pm.isNull() else None
+        self._fit()
+
+    def _fit(self) -> None:
+        if self._src is None:
+            self.setPixmap(QPixmap())
+        else:
+            self.setPixmap(self._src.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def resizeEvent(self, e) -> None:
+        super().resizeEvent(e)
+        if self._src is not None:
+            self._fit()
 
     def set_media_size(self, w: int | None, h: int | None) -> None:
         self._media = (w or 0, h or 0)
@@ -73,6 +94,37 @@ class ImageBox(QLabel):
         p.setBrush(QColor(47, 201, 165, 40))
         p.drawRect(int(ox + x * k), int(oy + y * k), int(cw * k), int(ch * k))
         p.end()
+
+
+class Stage(QStackedWidget):
+    """미리보기 틀: 너비에 맞춰 16:9 높이를 유지한다 (썸네일 / 영상 화면을 겹쳐 둔다)."""
+
+    def __init__(self):
+        super().__init__()
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setFixedHeight(int(LEFT_MIN * 9 / 16))
+
+    def resizeEvent(self, e) -> None:
+        super().resizeEvent(e)
+        h = int(self.width() * 9 / 16)
+        if h != self.height():
+            self.setFixedHeight(h)
+
+
+class AutoStack(QStackedWidget):
+    """지금 보이는 쪽 크기만큼만 차지하는 스택 (가장 큰 페이지에 맞추지 않는다)."""
+
+    def __init__(self):
+        super().__init__()
+        self.currentChanged.connect(lambda _i: self.updateGeometry())
+
+    def sizeHint(self):
+        w = self.currentWidget()
+        return w.sizeHint() if w is not None else super().sizeHint()
+
+    def minimumSizeHint(self):
+        w = self.currentWidget()
+        return w.minimumSizeHint() if w is not None else super().minimumSizeHint()
 
 
 class SeekSlider(QSlider):
@@ -128,6 +180,13 @@ class ToolChip(QFrame):
     def set_checked(self, on: bool) -> None:
         self.check.setChecked(on)
 
+    def reset(self) -> None:
+        """신호 없이 체크를 푼다 (새 파일로 시작할 때)."""
+        self.check.blockSignals(True)
+        self.check.setChecked(False)
+        self.check.blockSignals(False)
+        self._flag("on", False)
+
     def set_viewing(self, on: bool) -> None:
         self._flag("viewing", on)
 
@@ -145,20 +204,18 @@ class ToolPage(QWidget):
     back_requested = Signal()
     settings_requested = Signal()
     about_requested = Signal()
-    convert_requested = Signal()
     add_files_requested = Signal()
-    run_requested = Signal(list, list, str)    # [(도구, 옵션 값)], 입력 항목들, 저장 형식(빈 값=원본과 같게)
+    run_requested = Signal(list, list)    # [(도구, 옵션 값)], 입력 항목들
 
-    def __init__(self, thumbs: Thumbs, parent=None):
+    def __init__(self, thumbs: Thumbs, preferred_format: str | None = None, parent=None):
         super().__init__(parent)
         self._thumbs = thumbs
-        self.module = ""
         self.items: list[dict] = []
         self.tools: list[tools.Tool] = []
-        self.panels: list[OptionPanel] = []
+        self.panels: list = []
         self.chips: list[ToolChip] = []
+        self._groups: dict[str, QWidget] = {}
         self.cur = 0
-        self.out_ext = ""
         self._thumb_path = ""
         self._pi = 0                          # 미리 보는 파일 번호
         self._peaks: list[float] = []
@@ -175,14 +232,9 @@ class ToolPage(QWidget):
         back.setIcon(icons.icon("back"))
         back.setIconSize(QSize(18, 18))
         back.clicked.connect(self.back_requested)
-        self.title_icon = QLabel()
-        self.title = QLabel()
-        self.title.setObjectName("ToolTitle")
         self.file_lbl = QLabel()
         self.file_lbl.setObjectName("Muted")
         top.addWidget(back)
-        top.addWidget(self.title_icon)
-        top.addWidget(self.title)
         top.addWidget(self.file_lbl, 1)
         for text, icon, sig in (("정보", "info", self.about_requested), ("설정", "gear", self.settings_requested)):
             b = QPushButton(tr(text))
@@ -200,10 +252,9 @@ class ToolPage(QWidget):
         left.setSpacing(8)
         self.preview_pick = QComboBox()                    # 여러 파일일 때 어느 파일을 볼지
         self.preview_pick.currentIndexChanged.connect(self._on_preview_pick)
-        self.image = ImageBox(VIEW_W, VIEW_H)
+        self.image = ImageBox()
         self.video = media.QVideoWidget() if media.AVAILABLE else None
-        self.view = QStackedWidget()
-        self.view.setFixedSize(VIEW_W, VIEW_H)
+        self.view = Stage()
         self.view.addWidget(self.image)
         if self.video is not None:
             self.video.setStyleSheet("background: #111;")
@@ -257,46 +308,51 @@ class ToolPage(QWidget):
         left.addWidget(self.play_err)
         left.addStretch(1)
         leftw = QWidget()
-        leftw.setFixedWidth(VIEW_W + 20)
+        leftw.setMinimumWidth(LEFT_MIN)
+        leftw.setMaximumWidth(LEFT_MAX)
         leftw.setLayout(left)
-        body.addWidget(leftw)
+        body.addWidget(leftw, 1)
 
         right = QVBoxLayout()
-        self.chip_flow = FlowLayout(hspacing=8, vspacing=8)
-        chips_holder = QWidget()
-        chips_holder.setLayout(self.chip_flow)
-        right.addWidget(chips_holder)
+        self.stack = AutoStack()
+        self._build_tools(preferred_format)
         hint = QLabel(tr("체크한 도구는 정해진 순서대로 한 번에 적용돼요. 옵션을 바꾸면 자동으로 체크됩니다."))
         hint.setObjectName("Muted")
         hint.setWordWrap(True)
-        right.addWidget(hint)
-        self.stack = QStackedWidget()
+        card = QFrame()                                    # 옵션은 내용 크기만큼의 카드로 묶는다
+        card.setObjectName("OptCard")
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(16, 14, 16, 14)
+        cl.addWidget(self.stack)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFrameShape(QScrollArea.NoFrame)
-        scroll.setWidget(self.stack)
+        holder = QWidget()
+        hl = QVBoxLayout(holder)
+        hl.setContentsMargins(0, 0, 8, 0)
+        hl.setSpacing(10)
+        hl.addWidget(self._chips_box)                      # 도구 목록, 안내, 옵션을 한 스크롤 안에
+        hl.addWidget(hint)
+        hl.addWidget(card)
+        hl.addStretch(1)
+        scroll.setWidget(holder)
         right.addWidget(scroll, 1)
         body.addLayout(right, 1)
         v.addLayout(body, 1)
 
         # --- 아래 줄
         bot = QHBoxLayout()
-        lab = QLabel(tr("저장 형식"))
-        lab.setObjectName("Muted")
-        self.fmt_lbl = QPushButton()
-        self.fmt_lbl.setProperty("fmt", True)
-        self.fmt_lbl.setProperty("compact", True)
-        self.fmt_lbl.setCursor(Qt.PointingHandCursor)
-        self.fmt_lbl.clicked.connect(self._pick_format)
+        add = QPushButton(tr("파일 추가"))
+        add.setIcon(icons.icon("plus"))
+        add.clicked.connect(self.add_files_requested)
         self.go = QPushButton()
         self.go.setProperty("primary", True)
         self.go.setIcon(icons.icon("swap", icons.MINT_DARK))
         self.go.setIconSize(QSize(20, 20))
         self.go.setMinimumWidth(150)
         self.go.clicked.connect(self._run)
-        bot.addWidget(lab)
-        bot.addWidget(self.fmt_lbl)
+        bot.addWidget(add)
         bot.addStretch(1)
         bot.addWidget(self.go)
         v.addLayout(bot)
@@ -317,95 +373,130 @@ class ToolPage(QWidget):
             self.seek.seeked.connect(self._on_seeked)
         self.mark_in.clicked.connect(lambda: self._mark(True))
         self.mark_out.clicked.connect(lambda: self._mark(False))
+        self._update_run()
+
+    # ================================================================ 도구 목록 만들기 (한 번)
+    def _build_tools(self, preferred_format: str | None) -> None:
+        self._chips_box = QWidget()
+        box = QVBoxLayout(self._chips_box)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(10)
+        for module in GROUP_ORDER:
+            name, icon = tools.MODULES[module]
+            group = QWidget()
+            gl = QVBoxLayout(group)
+            gl.setContentsMargins(0, 0, 0, 0)
+            gl.setSpacing(6)
+            head = QHBoxLayout()
+            head.setSpacing(6)
+            ic = QLabel()
+            ic.setPixmap(icons.pixmap(icon, icons.GREEN, 18, 1.8))
+            title = QLabel(tr(name))
+            title.setObjectName("SectionLabel")
+            head.addWidget(ic)
+            head.addWidget(title)
+            head.addStretch(1)
+            gl.addLayout(head)
+            flow = FlowLayout(hspacing=8, vspacing=8)
+            gl.addLayout(flow)
+            box.addWidget(group)
+            self._groups[module] = group
+            for t in tools.TOOLS[module]:
+                i = len(self.tools)
+                chip = ToolChip(tr(t.name), t.icon)
+                chip.selected.connect(lambda n=i: self._on_chip_clicked(n))
+                chip.toggled.connect(lambda on, n=i: self._on_check_toggled(n, on))
+                flow.addWidget(chip)
+                panel = (ConvertPanel(t, preferred_format) if t.id == "convert" else OptionPanel(t))
+                panel.changed.connect(lambda n=i: self._on_panel_changed(n))
+                panel.time_edited.connect(self._on_time_typed)
+                panel.add_files_requested.connect(self.add_files_requested)
+                self.stack.addWidget(panel)
+                self.tools.append(t)
+                self.chips.append(chip)
+                self.panels.append(panel)
+
+    def index_of(self, tool_id: str) -> int:
+        return next(i for i, t in enumerate(self.tools) if t.id == tool_id)
+
+    def panel(self, tool_id: str):
+        return self.panels[self.index_of(tool_id)]
+
+    @property
+    def convert_panel(self) -> ConvertPanel:
+        return self.panel("convert")
 
     # ================================================================ 열기
-    def open(self, module: str, items: list[dict]) -> None:
-        if module != self.module:
-            self._build_module(module)
+    def open(self, items: list[dict], fresh: bool = True) -> None:
+        """fresh=True: 새 파일로 시작 (체크 모두 해제). False: 파일을 더 넣었을 때 (체크 유지)."""
+        if fresh:
+            for c in self.chips:
+                c.reset()
+            self._pi = 0
         self.set_items(items)
+        if fresh:
+            self._select_tool(self._first_visible_tool())
+        else:
+            self._select_tool(self.cur if self._tool_visible(self.cur) else self._first_visible_tool())
 
-    def _build_module(self, module: str) -> None:
-        self.module = module
-        name, icon = tools.MODULES[module]
-        self.title.setText(tr(name))
-        self.title_icon.setPixmap(icons.pixmap(icon, icons.GREEN, 22, 1.8))
-        self.tools = tools.TOOLS[module]
-        # 도구 칩 (맨 앞은 형식 변환으로 가는 바로가기)
-        while self.chip_flow.count():
-            w = self.chip_flow.takeAt(0).widget()
-            if w:
-                w.hide()
-                w.setParent(None)
-                w.deleteLater()
-        while self.stack.count():
-            w = self.stack.widget(0)
-            self.stack.removeWidget(w)
-            w.hide()
-            w.setParent(None)
-            w.deleteLater()
-        conv = QPushButton(tr("형식 변환"))
-        conv.setProperty("tool", True)
-        conv.setProperty("convert", True)
-        conv.setIcon(icons.icon("swap"))
-        conv.setCursor(Qt.PointingHandCursor)
-        conv.clicked.connect(self.convert_requested)
-        self.chip_flow.addWidget(conv)
-        self.panels, self.chips = [], []
-        for i, t in enumerate(self.tools):
-            chip = ToolChip(tr(t.name), t.icon)
-            chip.selected.connect(lambda n=i: self._on_chip_clicked(n))
-            chip.toggled.connect(lambda on, n=i: self._on_check_toggled(n, on))
-            self.chip_flow.addWidget(chip)
-            self.chips.append(chip)
-            panel = OptionPanel(t)
-            panel.changed.connect(lambda n=i: self._on_panel_changed(n))
-            panel.time_edited.connect(self._on_time_typed)
-            panel.add_files_requested.connect(self.add_files_requested)
-            self.stack.addWidget(panel)
-            self.panels.append(panel)
-        self.cur = 0
-        self.out_ext = ""
-        self.range.set_interactive(False)
-        self._select_tool(0)
+    def _tool_visible(self, i: int) -> bool:
+        return not self._groups[self.tools[i].module].isHidden()
+
+    def _first_visible_tool(self) -> int:
+        return next((i for i in range(len(self.tools)) if self._tool_visible(i)), 0)
 
     def set_items(self, items: list[dict]) -> None:
         self._loading = True                  # 파일을 다시 채우는 동안에는 자동 체크를 하지 않는다
         self.items = list(items)
+        have = {tools.module_of(it) for it in self.items}
+        for module, group in self._groups.items():
+            group.setVisible(module == "convert" or module in have)
         first = self.items[0]
         name = Path(first["path"]).name
         n = len(self.items)
         self.file_lbl.setText(f"{name}  ·  {first['info'].summary()}" if n == 1
                               else tr("{name} 외 {n}개", name=name, n=n - 1))
-        for p in self.panels:
-            p.set_files(self.items)
-        self.range.set_range(None, None)
-        for p in self.panels:
+        for t, p in zip(self.tools, self.panels):
+            p.set_files(self.items if t.module == "convert"
+                        else [it for it in self.items if tools.module_of(it) == t.module])
             p.set_time("", "")
+        self.range.set_range(None, None)
         self.preview_pick.blockSignals(True)
         self.preview_pick.clear()
         for it in self.items:
             self.preview_pick.addItem(Path(it["path"]).name)
+        self._pi = min(self._pi, n - 1)
+        self.preview_pick.setCurrentIndex(self._pi)
         self.preview_pick.blockSignals(False)
-        self.preview_pick.setVisible(n > 1 and self.module != "photo")
+        self.preview_pick.setVisible(n > 1)
         self._loading = False
-        self._load_preview(0)
+        self._load_preview(self._pi)
+
+    @property
+    def _pm(self) -> str:
+        """지금 미리 보는 파일의 도구 묶음 (video / audio / photo)."""
+        return tools.module_of(self.items[self._pi]) if self.items else "video"
 
     def _load_preview(self, i: int) -> None:
         self._pi = i
         it = self.items[i]
         info, path = it["info"], it["path"]
+        pm = self._pm
         self._thumb_path = path
         self._peaks = []
         self.image.set_media_size(info.width, info.height)
-        if self.module == "audio":
+        if pm == "audio":
             self._thumbs.request_peaks(path)
         else:
             d = info.duration
-            self.image.setPixmap(QPixmap())
+            self.image.set_source(None)
             self.image.setText(tr("불러오는 중…"))
-            self._thumbs.request(path, min(d * 0.2, 10.0) if (self.module == "video" and d) else 0.0)
-        if self.player is not None and self.module in ("video", "audio"):
-            self.player.load(path)
+            self._thumbs.request(path, min(d * 0.2, 10.0) if (pm == "video" and d) else 0.0)
+        if self.player is not None:
+            if pm in ("video", "audio"):
+                self.player.load(path)
+            else:
+                self.player.unload()
         self.view.setCurrentIndex(0)
         self.pos_lbl.setText(f"0:00.0 / {fmt_time(info.duration or 0)}")
         self.seek.setValue(0)
@@ -422,11 +513,17 @@ class ToolPage(QWidget):
     def _checked_idx(self) -> list[int]:
         return [i for i, c in enumerate(self.chips) if c.is_checked()]
 
-    def _is_checked(self, ids: tuple) -> bool:
-        return any(self.chips[i].is_checked() for i, t in enumerate(self.tools) if t.id in ids)
+    def _is_checked(self, ids: tuple, module: str | None = None) -> bool:
+        return any(c.is_checked() for c, t in zip(self.chips, self.tools)
+                   if t.id in ids and (module is None or t.module == module))
 
     def _select_tool(self, i: int) -> None:
         self.cur = i
+        t = self.tools[i]
+        if self.items and t.module != "convert" and t.module != self._pm:
+            j = next((k for k, it in enumerate(self.items) if tools.module_of(it) == t.module), None)
+            if j is not None:                 # 이 도구를 쓸 종류의 파일로 미리보기를 옮긴다
+                self.preview_pick.setCurrentIndex(j)
         for k, c in enumerate(self.chips):
             c.set_viewing(k == i)
         self.stack.setCurrentIndex(i)
@@ -464,8 +561,9 @@ class ToolPage(QWidget):
         return self.tools[self.cur]
 
     def _merge_trim(self) -> bool:
-        """합치기와 자르기를 함께 쓰면 자르기 시간은 합친 결과를 기준으로 한다."""
-        return self._is_checked(MERGE_TOOLS) and self._is_checked(TRIM_TOOLS)
+        """합치기와 자르기를 함께 쓰면 자르기 시간은 합친 결과를 기준으로 한다 (미리 보는 파일 종류 기준)."""
+        pm = self._pm
+        return self._is_checked(MERGE_TOOLS, pm) and self._is_checked(TRIM_TOOLS, pm)
 
     def _preview_duration(self) -> float:
         return float(self.items[self._pi]["info"].duration or 0.0) if self.items else 0.0
@@ -475,7 +573,9 @@ class ToolPage(QWidget):
             return
         merged = self._merge_trim()
         if merged:
-            self.range.set_duration(sum((it["info"].duration or 0.0) for it in self.items))
+            pm = self._pm
+            self.range.set_duration(sum((it["info"].duration or 0.0) for it in self.items
+                                        if tools.module_of(it) == pm))
             self.range.set_peaks([])
         else:
             self.range.set_duration(self._preview_duration())
@@ -484,26 +584,28 @@ class ToolPage(QWidget):
         self.range.set_playhead(None if merged else (self.player.position_seconds() if self.player else None))
 
     def _update_side(self) -> None:
-        """도구에 따라 미리보기 쪽 표시를 바꾼다 (구간 막대, 크롭 상자, 파형, 재생 막대)."""
-        if not self.tools:
+        """미리 보는 파일과 보고 있는 도구에 따라 표시를 바꾼다 (구간 막대, 크롭 상자, 파형, 재생 막대)."""
+        if not self.tools or not self.items:
             return
-        tid = self.tool().id
-        audio = self.module == "audio"
-        trim = tid in TRIM_TOOLS
+        pm = self._pm
+        t = self.tool()
+        audio = pm == "audio"
+        trim = t.module == pm and t.id in TRIM_TOOLS
         merged = self._merge_trim()
         self.view.setVisible(not audio)
-        self.range.setMinimumHeight(76 if audio else 28)
+        self.range.setMinimumHeight(170 if audio else 28)
         self.range.setVisible(audio or trim)
         self.times.setVisible(audio or trim)
         self.range.set_interactive(trim)
-        self.controls.setVisible(self.player is not None and self.module in ("video", "audio"))
+        self.controls.setVisible(self.player is not None and pm in ("video", "audio"))
         self.mark_row.setVisible(trim and self.player is not None and not merged)
         self.note.setText(tr("합치기와 함께 쓰면 자르기 시간은 합친 결과 기준이에요.") if merged else "")
         self._update_crop()
         self._update_times()
 
     def _update_crop(self) -> None:
-        if not self.tools or self.tool().id not in CROP_TOOLS:
+        t = self.tool() if self.tools else None
+        if t is None or t.id not in CROP_TOOLS or t.module != self._pm:
             self.image.set_crop(None)
             return
         p = self.panels[self.cur].values()
@@ -522,10 +624,11 @@ class ToolPage(QWidget):
         self.image.set_crop(spec)
 
     # ================================================================ 구간 막대 <-> 시간 입력
-    def _trim_panel(self) -> OptionPanel | None:
-        for i, t in enumerate(self.tools):
-            if t.id in TRIM_TOOLS:
-                return self.panels[i]
+    def _trim_panel(self):
+        pm = self._pm
+        for t, p in zip(self.tools, self.panels):
+            if t.id in TRIM_TOOLS and t.module == pm:
+                return p
         return None
 
     def _on_range_dragged(self, start: float, end: float) -> None:
@@ -573,7 +676,7 @@ class ToolPage(QWidget):
     # ================================================================ 재생
     def _clip(self) -> tuple[float, float] | None:
         """자르기를 체크했으면 그 구간만 재생한다."""
-        if self._is_checked(TRIM_TOOLS) and not self._merge_trim() and self.range._dur:
+        if self._is_checked(TRIM_TOOLS, self._pm) and not self._merge_trim() and self.range._dur:
             s, e = self.range.range_seconds()
             if e - s > 0.1:
                 return s, e
@@ -610,11 +713,11 @@ class ToolPage(QWidget):
 
     def _on_playing(self, on: bool) -> None:
         self.play_btn.setIcon(icons.icon("pause" if on else "play"))
-        if on and self.module == "video":
+        if on and self._pm == "video":
             self.view.setCurrentIndex(1)
 
     def _on_stopped(self) -> None:
-        if self.module == "video":
+        if self._pm == "video":
             self.view.setCurrentIndex(0)
 
     def _on_play_failed(self, msg: str) -> None:
@@ -623,36 +726,26 @@ class ToolPage(QWidget):
 
     # ================================================================ 미리보기 결과
     def _on_thumb(self, path: str, data: bytes) -> None:
-        if path != self._thumb_path or self.module == "audio":
+        if path != self._thumb_path or self._pm == "audio":
             return
         pm = QPixmap()
         if data and pm.loadFromData(data):
             self.image.setText("")
-            self.image.setPixmap(pm.scaled(self.image.width(), self.image.height(),
-                                           Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.image.set_source(pm)
         else:
             self.image.setText(tr(".{ext}\n미리보기 없음", ext=simple.ext_of(path)))
         self.image.update()
 
     def _on_peaks(self, path: str, peaks) -> None:
-        if path == self._thumb_path and self.module == "audio":
+        if path == self._thumb_path and self._pm == "audio":
             self._peaks = list(peaks)
             if not self._merge_trim():
                 self.range.set_peaks(self._peaks)
 
-    # ================================================================ 저장 형식 / 실행
-    def _refresh_format(self) -> None:
-        self.fmt_lbl.setText(simple.label_of(self.out_ext) if self.out_ext else tr("원본과 같은 형식"))
-
-    def _pick_format(self) -> None:
-        dlg = FormatDialog(self.module, self.out_ext, self)
-        if dlg.exec() and dlg.chosen is not None:
-            self.out_ext = dlg.chosen
-            self._refresh_format()
-
+    # ================================================================ 화면 표시 / 실행
     def showEvent(self, e) -> None:
-        self._refresh_format()
-        if self.player is not None and self.items and not self.player.loaded and self.module in ("video", "audio"):
+        if (self.player is not None and self.items and not self.player.loaded
+                and self._pm in ("video", "audio")):
             self.player.load(self.items[self._pi]["path"])      # 작업을 마치고 돌아왔을 때
             self.play_btn.setEnabled(True)
         super().showEvent(e)
@@ -665,9 +758,11 @@ class ToolPage(QWidget):
     def _run(self) -> None:
         ids = self._checked_idx()
         steps = [(self.tools[i], self.panels[i].values()) for i in ids]
-        items = self.items
+        items = list(self.items)
         for i in ids:
-            if self.tools[i].multi:               # 합치기: 목록에 보이는 순서대로
+            t = self.tools[i]
+            if t.multi:                           # 합치기: 목록에 보이는 순서대로
                 by_path = {it["path"]: it for it in self.items}
-                items = [by_path[p] for p in self.panels[i].file_order() if p in by_path]
-        self.run_requested.emit(steps, items, self.out_ext)
+                ordered = [by_path[p] for p in self.panels[i].file_order() if p in by_path]
+                items = [it for it in items if tools.module_of(it) != t.module] + ordered
+        self.run_requested.emit(steps, items)

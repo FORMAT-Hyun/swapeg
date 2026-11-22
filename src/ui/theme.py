@@ -55,6 +55,7 @@ QPushButton[tool="true"] {{
 QPushButton[tool="true"]:hover {{ background: {GREEN_SOFT}; border-color: {GREEN}; }}
 QPushButton[tool="true"]:checked {{ background: {ACCENT}; border-color: {ACCENT}; color: {ON_ACCENT}; }}
 QPushButton[tool="true"][convert="true"] {{ border-style: dashed; color: {GREEN}; }}
+QFrame#OptCard {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 14px; }}
 QFrame[chip="true"] {{ background: {BG}; border: 1px solid {BORDER_STRONG}; border-radius: 16px; }}
 QFrame[chip="true"]:hover {{ border-color: {GREEN}; }}
 QFrame[chip="true"][on="true"] {{ background: {ACCENT_SOFT}; border-color: {ACCENT}; }}

@@ -2,18 +2,18 @@
 
 **Your videos, music and photos - convert, trim, merge, resize and more.** Swapeg is a friendly Windows app powered by FFmpeg. No commands, no settings maze, and your original quality is kept.
 
-![Swapeg home screen](docs/images/home.png)
+![Swapeg start screen](docs/images/home.png)
 
 ## What you can do
 
-Pick a module on the start screen, or simply drop your files anywhere - Swapeg opens the right module for you.
+Drop your files on the window (or click it to choose them). Swapeg shows the tools that fit your files in one list, and you tick the ones you want.
 
-| Module | Tools |
+| Tools for | What they do |
 |---|---|
-| **Convert format** | Convert video, audio and images between 54 formats, extract the sound from a video, make animated GIFs. |
 | **Video** | **Trim** - **Merge** - **Size / rotate** (resolution, rotate, flip, crop) - **Speed / FPS** - **Sound** (remove, replace, volume) - **Subtitles** (burn in, add as a track, remove) |
 | **Music** | **Trim** (with fade in/out) - **Merge** (direct, 1 second gap or crossfade) - **Volume** (with loudness normalizing) - **Speed** (keep or change the pitch) |
 | **Photo** | **Resize** - **Rotate / flip** - **Crop** - **Watermark** (position, size, opacity) |
+| **Convert format** | Change video, audio and images between 54 formats, extract the sound from a video, make animated GIFs. |
 
 ## Highlights
 
@@ -49,21 +49,23 @@ Download the newest `Setup.exe` and run it. It installs over your current versio
 
 ## How to use
 
-1. **Choose a module** on the start screen, or **drop your files** onto the window. Dropping video opens Video, music opens Music, photos open Photo, and mixed files open Convert format.
-2. **Tick the tools you want.** Click a tool's name to see its options, and tick its checkbox to include it. Changing any option ticks that tool for you. The first button, *Convert format*, jumps to the format converter at any time.
+1. **Drop your files** onto the window, or click it to choose them. You can mix videos, music and photos.
+2. **Tick the tools you want.** The tools are grouped as *Video*, *Music*, *Photo* and *Convert format* - only the groups that fit your files are shown. Click a tool's name to see its options, and tick its checkbox to include it. Changing any option ticks that tool for you.
 3. **Press the action button** (it says, for example, *Apply 3 tools*). A progress bar appears; when it is done you get a preview of the result and buttons to open the folder, keep editing the same files, or start over.
 
-Ticked tools run in a fixed order, so you never have to think about it: *Merge* first, then burned-in subtitles, *Trim*, size / rotate, speed, sound and finally subtitle tracks (for photos: *Crop*, *Rotate*, *Resize*, *Watermark*). When *Merge* and *Trim* are used together, the trim times refer to the merged result. Everything is checked before the first step starts, so a mistake in step three never wastes the time spent on step one.
+![Swapeg with a video](docs/images/video.png)
 
-By default the result is saved next to the original with a short suffix (`_cut`, `_merged`, `_edit` when several tools were used, ...) and the same format. **Your original files are never overwritten or deleted.** Use **Save as** at the bottom to pick another format.
+Each file only gets the tools of its own kind: a video gets the ticked Video tools, a song the Music tools, a photo the Photo tools. *Convert format* is applied last, to every file that can be converted to the chosen format. Files that no ticked tool applies to are listed as skipped on the result screen.
+
+Ticked tools run in a fixed order, so you never have to think about it: *Merge* first, then burned-in subtitles, *Trim*, size / rotate, speed, sound, subtitle tracks and finally *Convert format* (for photos: *Crop*, *Rotate*, *Resize*, *Watermark*, then convert). When *Merge* and *Trim* are used together, the trim times refer to the merged result. Everything is checked before the first step starts, so a mistake in step three never wastes the time spent on step one.
+
+By default the result is saved next to the original with a short suffix (`_cut`, `_merged`, `_edit` when several tools were used, ...) and the same format. **Your original files are never overwritten or deleted.** To save in another format, tick *Convert format* and pick one.
 
 ### Playing and trimming
 
-Videos and music have a play bar under the preview: play / pause, click or drag to jump, and the current time. With *Trim* ticked, only the chosen part is played, and **Start here** / **End here** set the trim points at the current position. With several files, pick which one to preview from the list above the preview.
+Videos and music have a play bar under the preview: play / pause, click or drag to jump, and the current time. With *Trim* ticked, only the chosen part is played, and **Start here** / **End here** set the trim points at the current position. With several files, pick which one to preview from the list above the preview; choosing a tool also switches the preview to a file of that kind.
 
-### Video
-
-![Video module](docs/images/video.png)
+### Video tools
 
 - **Trim** - drag the two handles under the preview, or type the start and end time (`90`, `1:30`, `0:01:30`). *Trim fast without re-encoding* is instant but cuts at the nearest keyframe.
 - **Merge** - add several videos, drag them into order. Everything is matched to the size of the first video, and clips without sound get silence.
@@ -72,19 +74,19 @@ Videos and music have a play bar under the preview: play / pause, click or drag 
 - **Sound** - remove it, replace it with another audio file, or change the volume.
 - **Subtitles** - burn an `.srt`, `.ass` or `.vtt` file into the picture, add it as a subtitle track (MP4, MKV, MOV, WebM) or remove existing subtitles.
 
-### Music
+### Music tools
 
-![Music module](docs/images/music.png)
+![Music tools](docs/images/music.png)
 
 - **Trim** - drag the handles on the waveform; optional fade in and fade out.
 - **Merge** - join tracks directly, with a 1 second gap, or with a 2 second crossfade.
 - **Volume** - from 0% to 300%, plus *Normalize loudness* for even playback.
 - **Speed** - 0.5x to 2x, keeping the pitch or letting it change like a record.
-- Video files can be used too - Swapeg works on their sound.
+- To work on the sound of a video, use the video **Sound** tool, or tick *Convert format* and pick MP3 to extract it.
 
-### Photo
+### Photo tools
 
-![Photo module](docs/images/photo.png)
+![Photo tools](docs/images/photo.png)
 
 - **Resize** - quick sizes (50%, long side 1920 or 1280) or an exact width and height with the ratio locked or free.
 - **Rotate / flip** - 90, 180 or 270 degrees, horizontal or vertical flip.
@@ -95,7 +97,7 @@ Videos and music have a play bar under the preview: play / pause, click or drag 
 
 ![Convert format](docs/images/pick.png)
 
-Drop files, click the format you want, and press *Convert*. The formats that make sense for your files are shown as boxes; use the search box to find one quickly (try `mp3`, `video` or `image`).
+Tick *Convert format* and click the format you want. Only formats that make sense for your files are shown; use the search box to find one quickly (try `mp3`, `video` or `image`). It can be used alone, or together with the other tools: the edits are done first and the result is saved in the chosen format.
 
 ![Converting](docs/images/convert.png)
 
@@ -107,7 +109,7 @@ Drop files, click the format you want, and press *Convert*. The formats that mak
 | Audio | MP3, WAV, FLAC, M4A, AAC, OGG, OGA, OPUS, WMA, AIFF, AIF, AC3, MP2, MKA, AU, CAF, WV, TTA |
 | Image | PNG, JPG, JPEG, WebP, GIF, BMP, TIFF, TIF, ICO, TGA, PPM, JP2, PCX, SGI, QOI, EXR, AVIF |
 
-Input can be anything FFmpeg can read. In *Convert format*, the file's own format is not offered (an MP4 is never converted to MP4).
+Input can be anything FFmpeg can read. In *Convert format*, the file's own format is not offered (an MP4 is never converted to MP4); to keep the format, simply leave *Convert format* unticked.
 
 ## Settings
 
