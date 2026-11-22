@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QProcess, QSettings, QSize, Qt, QTimer, QUrl
@@ -54,6 +56,9 @@ class MainWindow(QMainWindow):
         self._cancelled = False
         self._module = ""                  # 지금 열려 있는 편집 모듈 (video/audio/photo)
         self._from_tool = False            # 마지막 실행이 편집 도구에서 시작됐는지
+        self._plans: list = []             # 편집 도구 실행 계획 (작업마다 하나, 변환기에서는 비어 있음)
+        self._failed_groups: set[int] = set()
+        self._tmp_dir: str | None = None   # 여러 도구를 이어 쓸 때 단계 사이의 임시 폴더
 
         self.thumbs = Thumbs(lambda: self.ffmpeg, self)
         self.runner = JobRunner(self)
@@ -528,6 +533,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, tr("저장 위치"), tr("저장 폴더를 만들 수 없습니다.\n{err}", err=e))
                 return
         jobs, self._job_files, self._results, self._outs = [], [], [], []
+        self._plans, self._failed_groups = [], set()
         self._ok_outs: list[str] = []
         for it in self.items:
             src = it["path"]
@@ -549,9 +555,9 @@ class MainWindow(QMainWindow):
             return
         self._launch(jobs, from_tool=False)
 
-    def _run_tool(self, tool, params: dict, items: list, out_ext: str) -> None:
-        """편집 도구 실행: 옵션을 검증해 ffmpeg 명령을 만들고 공용 진행 화면으로 넘어간다."""
-        if not self.ffmpeg:
+    def _run_tool(self, steps: list, items: list, out_ext: str) -> None:
+        """편집 도구 실행: 체크한 도구들을 검증해 순서대로 이어 붙인 ffmpeg 명령을 만들고 진행 화면으로 넘어간다."""
+        if not self.ffmpeg or not self.ffprobe:
             self._offer_install()
             return
         cfg = load_settings(self.settings)
@@ -562,13 +568,41 @@ class MainWindow(QMainWindow):
             except OSError as e:
                 QMessageBox.warning(self, tr("저장 위치"), tr("저장 폴더를 만들 수 없습니다.\n{err}", err=e))
                 return
+        self._cleanup_tmp()
+        tmp = None
+        if len(steps) > 1:                     # 단계 사이의 임시 파일: 결과가 저장될 폴더 안에 둔다 (큰 영상도 안전)
+            where = out_dir or str(Path(items[0]["path"]).parent) if items else None
+            try:
+                tmp = tempfile.mkdtemp(prefix=".swapeg-", dir=where)
+            except OSError:
+                tmp = tempfile.mkdtemp(prefix="swapeg-")
         try:
-            plans = tools.plan_jobs(tool, self.ffmpeg, items, params, out_ext, cfg["quality"], out_dir)
+            plans = tools.plan_chain(steps, self.ffmpeg, items, out_ext, cfg["quality"], out_dir, tmp, self.ffprobe)
         except tools.ToolError as e:
+            if tmp:
+                shutil.rmtree(tmp, ignore_errors=True)
             QMessageBox.warning(self, tr("확인해 주세요"), str(e))
             return
+        self._tmp_dir = tmp
+        self._plans = plans
+        self._failed_groups = set()
         self._results, self._job_files, self._outs = [], [p.src for p in plans], [p.output for p in plans]
-        self._launch([Job(p.args, p.output, p.duration) for p in plans], from_tool=True)
+        self._launch([self._job_of(p) for p in plans], from_tool=True)
+
+    @staticmethod
+    def _job_of(p: "tools.Plan") -> Job:
+        job = Job(p.args, p.output, p.duration)
+        if p.prepare:
+            def prepare(j: Job, plan=p) -> None:
+                plan.prepare(plan)
+                j.args, j.duration = plan.args, plan.duration
+            job.prepare = prepare
+        return job
+
+    def _cleanup_tmp(self) -> None:
+        if self._tmp_dir:
+            shutil.rmtree(self._tmp_dir, ignore_errors=True)
+            self._tmp_dir = None
 
     def _launch(self, jobs: list, from_tool: bool) -> None:
         """공용 진행 화면을 열고 작업을 시작한다."""
@@ -598,8 +632,13 @@ class MainWindow(QMainWindow):
     def _on_job_started(self, i: int) -> None:
         self._last_err = ""
         name = Path(self._job_files[i]["path"]).name
-        total = len(self._job_files)
-        self.run_file.setText(f"{name}  ({i + 1}/{total})")
+        plan = self._plans[i] if i < len(self._plans) else None
+        if plan and plan.steps > 1:        # 여러 도구를 이어 쓰는 중: 몇 번째 파일, 어떤 단계인지
+            groups = max(p.group for p in self._plans) + 1
+            self.run_file.setText(f"{name}  ({plan.group + 1}/{groups}) · "
+                                  f"{tr(plan.label)} {plan.step + 1}/{plan.steps}")
+        else:
+            self.run_file.setText(f"{name}  ({i + 1}/{len(self._job_files)})")
         it = self._job_files[i]
         self.run_card.show_file(it["path"], name, "", self._seek_hint(it))
 
@@ -618,11 +657,24 @@ class MainWindow(QMainWindow):
         detail = msg
         if not ok and not self._cancelled and self._last_err:
             detail = f"{msg}: {self._last_err[:80]}"   # ffmpeg가 남긴 마지막 오류 줄
-        self._results.append((name, ok, detail))
+        plan = self._plans[i] if i < len(self._plans) else None
+        if plan is None:                               # 형식 변환: 작업 하나가 파일 하나
+            self._results.append((name, ok, detail))
+            if ok:
+                self._ok_outs.append(self._outs[i])
+            return
         if ok:
-            self._ok_outs.append(self._outs[i])
+            if plan.final:                             # 중간 단계의 임시 결과는 결과로 세지 않는다
+                self._results.append((name, True, detail))
+                self._ok_outs.append(self._outs[i])
+        elif plan.group not in self._failed_groups:    # 한 단계가 실패하면 그 파일의 남은 단계는 건너뛴다
+            self._failed_groups.add(plan.group)
+            if plan.steps > 1:
+                detail = f"{tr(plan.label)}: {detail}"
+            self._results.append((name, False, detail))
 
     def _on_all_finished(self) -> None:
+        self._cleanup_tmp()
         done = sum(1 for _n, ok, _m in self._results if ok)
         bad = [(n, m) for n, ok, m in self._results if not ok]
         self.btn_cancel.hide()
@@ -642,7 +694,9 @@ class MainWindow(QMainWindow):
         self.run_detail.setText("\n".join(f"{n}: {m}" for n, m in bad[:5]))
         if self._ok_outs:  # 변환된 결과 미리보기 (여러 개면 첫 번째)
             out = self._ok_outs[0]
-            dur = self._job_files[self._outs.index(out)]["info"].duration
+            idx = self._outs.index(out)
+            plan = self._plans[idx] if idx < len(self._plans) else None
+            dur = plan.duration if plan and plan.duration else self._job_files[idx]["info"].duration
             label = Path(out).name if len(self._ok_outs) == 1 else tr(
                 "{name} 외 {n}개", name=Path(out).name, n=len(self._ok_outs) - 1)
             self.run_cap.setText(tr("결과 미리보기"))

@@ -32,6 +32,7 @@ FONT_STACK = '"Pretendard", "Segoe UI", "Malgun Gothic", "Noto Sans KR", sans-se
 def _qss() -> str:
     assets = app_dir() / "assets"
     chevron = (assets / "chevron_down.svg").as_posix()
+    check = (assets / "check.svg").as_posix()
     return f"""
 * {{ font-family: {FONT_STACK}; font-size: 10pt; color: {TEXT}; }}
 QMainWindow, QDialog {{ background: {BG}; }}
@@ -54,6 +55,14 @@ QPushButton[tool="true"] {{
 QPushButton[tool="true"]:hover {{ background: {GREEN_SOFT}; border-color: {GREEN}; }}
 QPushButton[tool="true"]:checked {{ background: {ACCENT}; border-color: {ACCENT}; color: {ON_ACCENT}; }}
 QPushButton[tool="true"][convert="true"] {{ border-style: dashed; color: {GREEN}; }}
+QFrame[chip="true"] {{ background: {BG}; border: 1px solid {BORDER_STRONG}; border-radius: 16px; }}
+QFrame[chip="true"]:hover {{ border-color: {GREEN}; }}
+QFrame[chip="true"][on="true"] {{ background: {ACCENT_SOFT}; border-color: {ACCENT}; }}
+QFrame[chip="true"][viewing="true"] {{ background: {ACCENT}; border-color: {ACCENT}; }}
+QFrame[chip="true"] QPushButton {{ background: transparent; border: none; padding: 3px 2px; }}
+QFrame[chip="true"] QPushButton:hover {{ background: transparent; border: none; }}
+QFrame[chip="true"][viewing="true"] QPushButton {{ color: {ON_ACCENT}; font-weight: 600; }}
+QFrame[chip="true"] QCheckBox {{ background: transparent; border: none; padding: 0; spacing: 0; }}
 QPushButton[seg="true"] {{
     background: {BG}; border: 1px solid {BORDER_STRONG}; border-radius: 10px; padding: 4px 12px;
 }}
@@ -89,6 +98,11 @@ QWidget#GridInner {{ background: transparent; }}
 QLabel#DropHint {{ color: {MUTED}; font-size: 10pt; }}
 QDialog QGroupBox {{ margin-top: 14px; }}
 QRadioButton, QCheckBox {{ spacing: 8px; padding: 2px 0; }}
+QCheckBox::indicator {{
+    width: 16px; height: 16px; border: 1.5px solid {BORDER_STRONG}; border-radius: 5px; background: {BG};
+}}
+QCheckBox::indicator:hover {{ border-color: {GREEN}; }}
+QCheckBox::indicator:checked {{ background: {GREEN}; border-color: {GREEN}; image: url("{check}"); }}
 QLabel#DropGuide {{ color: {MUTED}; font-size: 13pt; }}
 QPushButton#DropZone:hover QLabel#DropGuide {{ color: {GREEN}; }}
 QPushButton#DropZone {{

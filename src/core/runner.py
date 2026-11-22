@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
@@ -15,6 +16,7 @@ class Job:
     output: str
     duration: float | None = None   # 출력 예상 길이(초)
     log: list[str] = field(default_factory=list)
+    prepare: Callable[["Job"], None] | None = None   # 실행 직전에 args/duration 을 채운다 (실패하면 예외)
 
 
 class JobRunner(QObject):
@@ -57,13 +59,21 @@ class JobRunner(QObject):
             return
         job = self._jobs[self._i]
         self._buf = ""
+        self.job_started.emit(self._i)
+        if job.prepare:                      # 앞 단계 결과를 보고 명령을 만드는 단계
+            try:
+                job.prepare(job)
+            except Exception as e:           # noqa: BLE001 - 사유를 화면에 그대로 보여 준다
+                self._proc = None
+                self.job_finished.emit(self._i, False, str(e) or tr("실패"))
+                QTimer.singleShot(0, self._next)
+                return
         p = QProcess(self)
         self._proc = p
         p.readyReadStandardOutput.connect(self._on_stdout)
         p.readyReadStandardError.connect(self._on_stderr)
         p.finished.connect(self._on_finished)
         p.errorOccurred.connect(self._on_error)
-        self.job_started.emit(self._i)
         self.log.emit(f"\n[{self._i + 1}/{len(self._jobs)}] 시작")
         p.start(job.args[0], job.args[1:])
 

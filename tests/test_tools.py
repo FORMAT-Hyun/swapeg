@@ -251,3 +251,96 @@ def test_specs_are_consistent():
                     assert f.default in [v for v, _ in f.options], (t.id, f.key)
                 if f.show_if:
                     assert f.show_if[0] in p or f.show_if[0] in {x.key for x in t.fields}, (t.id, f.key)
+
+
+# ------------------------------------------------------------------ 여러 도구를 이어서 (plan_chain)
+def run_chain(media, spec, files, out_ext="", quality="original", fail_at=None):
+    """spec: [(도구 id, 옵션)]. 앱과 같은 방식으로 단계마다 prepare -> ffmpeg 를 돌린다."""
+    steps = []
+    for tid, over in spec:
+        t = tools.tool_by_id(tid)
+        p = tools.defaults(t)
+        p.update(over)
+        steps.append((t, p))
+    tmp = media["dir"] / f"tmp_{len(list(media['dir'].iterdir()))}"
+    tmp.mkdir()
+    plans = tools.plan_chain(steps, FF, [item(f) for f in files], out_ext, quality, None, str(tmp), FP)
+    outs = []
+    for pl in plans:
+        if pl.prepare:
+            pl.prepare(pl)
+        r = subprocess.run(pl.args, capture_output=True)
+        assert r.returncode == 0, r.stderr.decode("utf-8", "replace")[-600:]
+        if pl.final:
+            outs.append(Path(pl.output))
+    return plans, outs
+
+
+def test_steps_are_ordered_for_correct_results():
+    def ids(module, *tids, **over):
+        steps = [(tools.tool_by_id(t), {**tools.defaults(tools.tool_by_id(t)), **over.get(t, {})}) for t in tids]
+        return [t.id for t, _ in tools.order_steps(steps)]
+    assert ids("video", "v_audio", "v_speed", "v_trim", "v_merge") == ["v_merge", "v_trim", "v_speed", "v_audio"]
+    # 영상에 입히는 자막은 원본 시간 기준이라 자르기보다 먼저, 트랙 자막은 다른 단계가 지우므로 맨 뒤
+    assert ids("video", "v_trim", "v_subs", v_subs={"mode": "burn"}) == ["v_subs", "v_trim"]
+    assert ids("video", "v_trim", "v_subs", v_subs={"mode": "track"}) == ["v_trim", "v_subs"]
+    assert ids("photo", "p_mark", "p_resize", "p_rotate", "p_crop") == ["p_crop", "p_rotate", "p_resize", "p_mark"]
+
+
+def test_chain_video_trim_resize_speed(media):
+    plans, outs = run_chain(media, [("v_speed", {"speed": "2"}), ("v_trim", {"start": "1", "end": "5"}),
+                                    ("v_transform", {"res": "120"})], [media["v"]])
+    assert [p.final for p in plans] == [False, False, True] and len(outs) == 1
+    info = probe(FP, str(outs[0]))
+    assert info.height == 120                                       # 크기 바꾸기
+    assert info.duration == pytest.approx(2.0, abs=0.5)             # 4초 구간을 2배속으로
+    assert "audio" in streams(outs[0])
+    assert "_edit" in outs[0].stem and outs[0].suffix == ".mp4"
+
+
+def test_chain_audio_merge_trim_volume(media):
+    plans, outs = run_chain(media, [("a_volume", {"volume": 200}), ("a_trim", {"start": "1", "end": "4"}),
+                                    ("a_merge", {})], [media["a"], media["a2"]], out_ext="mp3")
+    assert len(outs) == 1                                           # 합치기는 파일 여러 개를 하나로
+    assert probe(FP, str(outs[0])).duration == pytest.approx(3.0, abs=0.3)   # 합친(10초) 뒤에 1~4초
+    assert outs[0].suffix == ".mp3"
+
+
+def test_chain_photo_crop_rotate_resize_mark(media):
+    plans, outs = run_chain(media, [("p_mark", {"logo": str(media["logo"]), "size": "20"}),
+                                    ("p_resize", {"quick": "50"}), ("p_rotate", {"rotate": "90"}),
+                                    ("p_crop", {"ratio": "1:1"})], [media["img"]], out_ext="jpg")
+    info = probe(FP, str(outs[0]))
+    # 200x100 -> 크롭 1:1 = 100x100 -> 회전 -> 50% = 50x50
+    assert (info.width, info.height) == (50, 50)
+    assert outs[0].suffix == ".jpg"
+
+
+def test_chain_burned_subs_then_trim_keeps_timing(media):
+    plans, outs = run_chain(media, [("v_trim", {"start": "1", "end": "4"}),
+                                    ("v_subs", {"mode": "burn", "sub_file": str(media["srt"])})], [media["v"]])
+    assert [p.step for p in plans] == [0, 1] and plans[0].label == "자막"      # 자막이 먼저
+    assert probe(FP, str(outs[0])).duration == pytest.approx(3.0, abs=0.5)
+
+
+def test_chain_batch_makes_one_result_per_file(media):
+    plans, outs = run_chain(media, [("a_trim", {"start": "1"}), ("a_volume", {"volume": 150})],
+                            [media["a"], media["a2"]])
+    assert len(outs) == 2 and {p.group for p in plans} == {0, 1}
+
+
+def test_chain_validates_every_step_up_front(media):
+    t_ok, t_bad = tools.tool_by_id("v_trim"), tools.tool_by_id("v_speed")
+    steps = [(t_ok, {**tools.defaults(t_ok), "start": "1"}), (t_bad, tools.defaults(t_bad))]   # 속도는 바꿀 게 없음
+    with pytest.raises(tools.ToolError):
+        tools.plan_chain(steps, FF, [item(media["v"])], "", "original", None, str(media["dir"]), FP)
+    with pytest.raises(tools.ToolError):
+        tools.plan_chain([], FF, [item(media["v"])])
+
+
+def test_chain_step_fails_cleanly_when_previous_output_is_missing(media):
+    t1, t2 = tools.tool_by_id("a_trim"), tools.tool_by_id("a_volume")
+    steps = [(t1, {**tools.defaults(t1), "start": "1"}), (t2, tools.defaults(t2) | {"volume": 150})]
+    plans = tools.plan_chain(steps, FF, [item(media["a"])], "", "original", None, str(media["dir"]), FP)
+    with pytest.raises(tools.ToolError):
+        plans[1].prepare(plans[1])                                  # 첫 단계를 돌리지 않았으니 결과가 없다

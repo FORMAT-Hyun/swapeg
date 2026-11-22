@@ -18,6 +18,7 @@ class RangeBar(QWidget):
         self._a, self._b = 0.0, 1.0           # 0~1 비율
         self._peaks: list[float] = []
         self._interactive = True
+        self._play: float | None = None       # 재생 위치 (0~1 비율), 없으면 표시 안 함
         self._drag: str | None = None
         self.setMinimumHeight(76 if tall else 28)
         self.setMouseTracking(True)
@@ -34,6 +35,13 @@ class RangeBar(QWidget):
     def set_interactive(self, on: bool) -> None:
         self._interactive = on
         self.update()
+
+    def set_playhead(self, seconds: float | None) -> None:
+        """재생 위치 표시선. None 이면 숨긴다."""
+        f = None if seconds is None or self._dur <= 0 else max(0.0, min(seconds / self._dur, 1.0))
+        if f != self._play:
+            self._play = f
+            self.update()
 
     def set_range(self, start: float | None, end: float | None) -> None:
         """초 단위로 구간을 지정 (None 이면 처음/끝). 잘못된 값은 무시."""
@@ -80,6 +88,10 @@ class RangeBar(QWidget):
             for x in (x1, x2):
                 p.setBrush(GREEN)
                 p.drawRoundedRect(QRectF(x - 4, t.top(), 8, t.height()), 3, 3)
+        if self._play is not None:                         # 재생 위치선
+            x = t.left() + self._play * t.width()
+            p.setBrush(QColor("#1c2b26"))
+            p.drawRoundedRect(QRectF(x - 1, t.top() - 2, 2, t.height() + 4), 1, 1)
         p.end()
 
     # ------------------------------------------------------------ 끌기

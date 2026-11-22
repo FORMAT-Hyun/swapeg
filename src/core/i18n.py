@@ -249,4 +249,20 @@ EN: dict[str, str] = {
     "자동 (시스템 언어)": "Automatic (system language)",
     "언어를 바꾸려면 Swapeg를 다시 시작해야 합니다.\n지금 다시 시작할까요?":
         "Swapeg needs to restart to change the language.\nRestart now?",
+    # --- 여러 도구 이어서 적용 / 재생
+    "적용할 도구를 체크해 주세요.": "Please check the tools to apply.",
+    "앞 단계가 끝나지 않았어요.": "The previous step did not finish.",
+    "실패": "Failed",
+    "이 도구를 적용": "Apply this tool",
+    "재생 / 일시정지": "Play / Pause",
+    "여기부터": "Start here",
+    "여기까지": "End here",
+    "체크한 도구는 정해진 순서대로 한 번에 적용돼요. 옵션을 바꾸면 자동으로 체크됩니다.":
+        "Checked tools are applied together, in a fixed order. Changing an option checks its tool for you.",
+    "도구를 체크해 주세요": "Check a tool",
+    "{n}개 도구 적용": "Apply {n} tools",
+    "합치기와 함께 쓰면 자르기 시간은 합친 결과 기준이에요.":
+        "When used with Merge, trim times refer to the merged result.",
+    "이 파일은 미리 재생할 수 없어요. 편집은 그대로 할 수 있어요.":
+        "This file cannot be previewed here, but you can still edit it.",
 }

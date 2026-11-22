@@ -18,8 +18,10 @@ Pick a module on the start screen, or simply drop your files anywhere - Swapeg o
 ## Highlights
 
 - **Original quality by default.** When a format can hold the original streams, Swapeg copies them without re-encoding (lossless and fast). Otherwise it re-encodes at visually lossless settings and keeps the resolution and frame rate.
+- **Several tools, one go.** Drop your files once, tick every tool you need (for example *Trim* + *Size* + *Sound*) and press one button. Swapeg applies them in a sensible order and saves a single result - no need to export and re-open the file between steps.
+- **Play it right in the editor.** Play videos and music before you edit, jump anywhere, and use *Start here* / *End here* to set the trim points while watching or listening.
 - **See what you are editing.** Video and photo previews, a waveform for music, and draggable handles to pick the part you want to keep.
-- **Batch friendly.** Drop many files and apply the same tool to all of them (merge combines them into one).
+- **Batch friendly.** Drop many files and apply the same tools to all of them (merge combines them into one).
 - **English and Korean interface.** Follows your Windows language and can be switched in Settings.
 - **FFmpeg is set up for you.** If it is missing, Swapeg downloads it on first run and verifies its checksum.
 
@@ -48,10 +50,16 @@ Download the newest `Setup.exe` and run it. It installs over your current versio
 ## How to use
 
 1. **Choose a module** on the start screen, or **drop your files** onto the window. Dropping video opens Video, music opens Music, photos open Photo, and mixed files open Convert format.
-2. **Pick a tool** from the row of buttons and set its options. The first button, *Convert format*, jumps to the format converter at any time.
-3. **Press the action button** (for example *Start trimming*). A progress bar appears; when it is done you get a preview of the result and buttons to open the folder, keep editing the same files, or start over.
+2. **Tick the tools you want.** Click a tool's name to see its options, and tick its checkbox to include it. Changing any option ticks that tool for you. The first button, *Convert format*, jumps to the format converter at any time.
+3. **Press the action button** (it says, for example, *Apply 3 tools*). A progress bar appears; when it is done you get a preview of the result and buttons to open the folder, keep editing the same files, or start over.
 
-By default the result is saved next to the original with a short suffix (`_cut`, `_merged`, `_edit`, ...) and the same format. **Your original files are never overwritten or deleted.** Use **Save as** at the bottom to pick another format.
+Ticked tools run in a fixed order, so you never have to think about it: *Merge* first, then burned-in subtitles, *Trim*, size / rotate, speed, sound and finally subtitle tracks (for photos: *Crop*, *Rotate*, *Resize*, *Watermark*). When *Merge* and *Trim* are used together, the trim times refer to the merged result. Everything is checked before the first step starts, so a mistake in step three never wastes the time spent on step one.
+
+By default the result is saved next to the original with a short suffix (`_cut`, `_merged`, `_edit` when several tools were used, ...) and the same format. **Your original files are never overwritten or deleted.** Use **Save as** at the bottom to pick another format.
+
+### Playing and trimming
+
+Videos and music have a play bar under the preview: play / pause, click or drag to jump, and the current time. With *Trim* ticked, only the chosen part is played, and **Start here** / **End here** set the trim points at the current position. With several files, pick which one to preview from the list above the preview.
 
 ### Video
 
@@ -120,6 +128,8 @@ Click **About** for the version and links to the [GitHub repository](https://git
 - Tools that change the picture (resize, rotate, crop, speed, subtitles, merge) re-encode the video, which takes longer for large files. Quality is kept high (see the *Quality* setting).
 - Transparent images saved as JPG get a white background, because JPG has no transparency.
 - GIF output from videos is limited to 720 px wide and 15 fps to keep files a sensible size.
+- Using several tools re-encodes the video between steps at visually lossless quality; the final step uses your *Quality* setting. Temporary files are created next to the result and removed when the job ends.
+- Playback in the editor uses the media support that comes with Swapeg. A rare format may not play there, but it can still be edited.
 - Burned-in subtitles use FFmpeg's default font. Use *Add as subtitle track* if you want players to style them.
 - Some rare codecs or damaged files cannot be processed; the result screen shows FFmpeg's error message for the file.
 

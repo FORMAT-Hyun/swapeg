@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +52,12 @@ class Plan:
     output: str
     duration: float | None
     src: dict            # 미리보기에 쓸 입력 항목 {path, info, kind}
+    final: bool = True   # False면 다음 단계로 넘기는 임시 결과
+    group: int = 0       # 같은 최종 결과를 만드는 단계들은 같은 번호
+    step: int = 0
+    steps: int = 1
+    label: str = ""      # 진행 화면에 보일 단계 이름 (한국어 원문)
+    prepare: Any = None  # 두 번째 단계부터: 실행 직전에 앞 단계 결과를 보고 args 를 채운다 (Plan 을 받음)
 
 
 MODULES = {
@@ -669,22 +675,100 @@ _BUILDERS = {
 
 
 # ===================================================================== 실행 계획
-def plan_jobs(tool: Tool, ffmpeg: str, items: list[dict], params: dict, out_ext: str = "",
-              quality: str = "original", out_dir: str | None = None) -> list[Plan]:
-    """입력 파일들과 옵션으로 실행할 ffmpeg 명령 목록을 만든다. 입력 오류는 ToolError."""
+# 여러 도구를 한 번에 고르면 아래 순서로 이어서 실행한다 (앞 단계 결과가 다음 단계의 입력).
+#  - 합치기가 맨 앞 (그 뒤의 자르기 시간 등은 합친 결과 기준)
+#  - 영상에 입히는 자막은 원본 시간 기준이라 자르기/속도보다 먼저, 트랙 자막은 다른 단계가 지워 버리므로 맨 마지막
+#  - 사진은 크롭 좌표가 원본 기준이라 크롭이 먼저, 워터마크는 최종 크기 기준이라 맨 마지막
+_RANK = {
+    "v_merge": 0, "v_trim": 2, "v_transform": 3, "v_speed": 4, "v_audio": 5,
+    "a_merge": 0, "a_trim": 1, "a_volume": 2, "a_speed": 3,
+    "p_crop": 0, "p_rotate": 1, "p_resize": 2, "p_mark": 3,
+}
+# 단계 사이에 넘기는 임시 파일 형식 (무손실에 가깝게)
+INTERMEDIATE_EXT = {"video": "mkv", "audio": "flac", "photo": "png"}
+
+
+def step_rank(tool: Tool, params: dict) -> int:
+    if tool.id == "v_subs":
+        return 1 if params.get("mode", "burn") == "burn" else 6
+    return _RANK[tool.id]
+
+
+def order_steps(steps: list[tuple[Tool, dict]]) -> list[tuple[Tool, dict]]:
+    return sorted(steps, key=lambda s: step_rank(*s))
+
+
+def _virtual_item(group: list[dict], merged: bool) -> dict:
+    """뒷 단계를 미리 검사할 때 쓰는 가상의 입력 (합치기 뒤라면 길이는 모두 더한 값)."""
+    first = group[0]
+    if not merged:
+        return first
+    total = sum((i["info"].duration or 0.0) for i in group)
+    return {**first, "info": replace(first["info"], duration=total or None)}
+
+
+def _prepare_step(prev: Plan, build, ffmpeg: str, ffprobe: str, params: dict, ext: str, quality: str):
+    def prepare(plan: Plan) -> None:
+        if not Path(prev.output).is_file():
+            raise ToolError(tr("앞 단계가 끝나지 않았어요."))
+        info = _probe(ffprobe, prev.output)
+        item = {"path": prev.output, "info": info, "kind": simple.kind_of(prev.output, info)}
+        args, dur = build(ffmpeg, [item], params, ext, plan.output)
+        plan.args, plan.duration = simple._tune(args, quality), dur
+    return prepare
+
+
+def _probe(ffprobe: str, path: str):
+    from .probe import probe          # 늦게 불러온다 (probe 는 단계 실행 때만 필요)
+    return probe(ffprobe, path)
+
+
+def plan_chain(steps: list[tuple[Tool, dict]], ffmpeg: str, items: list[dict], out_ext: str = "",
+               quality: str = "original", out_dir: str | None = None, tmp_dir: str | None = None,
+               ffprobe: str | None = None) -> list[Plan]:
+    """고른 도구들을 정해진 순서로 이어 붙인 실행 계획을 만든다 (파일마다 단계 수만큼 Plan).
+    입력 오류는 모든 단계를 미리 검사해서 실행 전에 ToolError 로 알린다.
+    두 단계 이상이면 임시 파일을 tmp_dir 에 두고 ffprobe 로 앞 단계 결과를 읽어 다음 명령을 만든다."""
     if not items:
         raise ToolError(tr("파일을 먼저 넣어 주세요."))
-    bad = [Path(i["path"]).name for i in items if not accepts(tool.module, i)]
+    if not steps:
+        raise ToolError(tr("적용할 도구를 체크해 주세요."))
+    module = steps[0][0].module
+    steps = order_steps(steps)
+    if len(steps) > 1 and not (tmp_dir and ffprobe):
+        raise ValueError("tmp_dir and ffprobe are required for chained tools")
+    bad = [Path(i["path"]).name for i in items if not accepts(module, i)]
     if bad:
         raise ToolError(tr("이 도구로 다룰 수 없는 파일이 있어요: {names}", names=", ".join(bad)))
-    build = _BUILDERS[tool.id]
-    groups = [items] if tool.multi else [[i] for i in items]
-    plans = []
-    for g in groups:
-        ext = resolve_ext(tool.module, g[0]["path"], out_ext)
-        if ext not in MODULE_EXTS[tool.module]:
+    merged = steps[0][0].multi
+    groups = [items] if merged else [[i] for i in items]
+    n = len(steps)
+    suffix = steps[0][0].suffix if n == 1 else "edit"
+    plans: list[Plan] = []
+    for gi, g in enumerate(groups):
+        final_ext = resolve_ext(module, g[0]["path"], out_ext)
+        if final_ext not in MODULE_EXTS[module]:
             raise ToolError(tr("이 형식은 사용할 수 없어요."))
-        out = output_path(g[0]["path"], tool.suffix, ext, out_dir)
-        args, dur = build(ffmpeg, g, params, ext, str(out))
-        plans.append(Plan(simple._tune(args, quality), str(out), dur, g[0]))
+        virt = _virtual_item(g, merged)
+        prev: Plan | None = None
+        for si, (tool, params) in enumerate(steps):
+            last = si == n - 1
+            ext = final_ext if last else INTERMEDIATE_EXT[module]
+            q = quality if last else "original"
+            out = (output_path(g[0]["path"], suffix, ext, out_dir) if last
+                   else Path(tmp_dir) / f"g{gi}_s{si}.{ext}")
+            build = _BUILDERS[tool.id]
+            args, dur = build(ffmpeg, g if si == 0 else [virt], params, ext, str(out))   # 뒷 단계는 검사용
+            plan = Plan(simple._tune(args, q) if si == 0 else [], str(out), dur, g[0],
+                        final=last, group=gi, step=si, steps=n, label=tool.name)
+            if si > 0:
+                plan.prepare = _prepare_step(prev, build, ffmpeg, ffprobe, params, ext, q)
+            plans.append(plan)
+            prev = plan
     return plans
+
+
+def plan_jobs(tool: Tool, ffmpeg: str, items: list[dict], params: dict, out_ext: str = "",
+              quality: str = "original", out_dir: str | None = None) -> list[Plan]:
+    """도구 하나만 쓰는 실행 계획 (plan_chain 의 단일 단계 버전)."""
+    return plan_chain([(tool, params)], ffmpeg, items, out_ext, quality, out_dir)

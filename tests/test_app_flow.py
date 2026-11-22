@@ -136,7 +136,8 @@ def test_merge_uses_list_order(app, win, files):
     win._add_files([str(files["a"])])                       # 같은 파일은 무시된다
     assert len(win.items) == 1
     tp = win.tool_page
-    tp._select_tool(1)
+    tp._on_chip_clicked(1)                                  # 아직 체크한 게 없으면 처음 연 도구가 체크된다
+    assert tp._checked_idx() == [1]
     from core.probe import probe
     extra = {"path": str(files["v"]), "info": probe(find_tool("ffprobe"), str(files["v"])), "kind": "video"}
     win.items.append(extra)
@@ -146,3 +147,83 @@ def test_merge_uses_list_order(app, win, files):
     tp._run()
     wait_done(app, win)
     assert win._ok_outs
+
+
+# ------------------------------------------------------------------ 여러 도구를 한 번에 / 재생
+def test_run_needs_a_checked_tool(app, win, files):
+    win._open_module("video")
+    win._add_files([str(files["v"])])
+    tp = win.tool_page
+    assert tp._checked_idx() == [] and not tp.go.isEnabled()      # 아직 아무것도 체크 안 함
+    tp._on_chip_clicked(2)                                         # 처음 연 도구가 자동으로 체크됨
+    assert tp._checked_idx() == [2] and tp.go.isEnabled()
+    tp._on_chip_clicked(3)                                         # 이미 체크된 게 있으면 보기만 한다
+    assert tp._checked_idx() == [2]
+    tp.chips[2].set_checked(False)
+    assert not tp.go.isEnabled()
+
+
+def test_changing_an_option_checks_the_tool(app, win, files):
+    win._open_module("photo")
+    win._add_files([str(files["i"])])
+    tp = win.tool_page
+    assert tp._checked_idx() == []
+    tp.panels[1]._set("rotate", "180")                             # 회전/뒤집기 옵션을 만짐
+    assert tp._checked_idx() == [1]
+
+
+def test_chain_of_tools_runs_in_one_go(app, win, files):
+    """한 번 올린 음악에 자르기 + 볼륨을 같이 적용: 결과 하나, 임시 파일은 남지 않는다."""
+    from core.probe import probe
+    win._open_module("audio")
+    win._add_files([str(files["a"])])
+    tp = win.tool_page
+    tp.panels[0]._edits["start"].setText("1")
+    tp.panels[0]._edits["end"].setText("3")
+    tp.panels[2]._set("volume", 200)
+    assert tp._checked_idx() == [0, 2]
+    assert "2" in tp.go.text()
+    tp._run()
+    wait_done(app, win)
+    assert len(win._ok_outs) == 1 and len(win._results) == 1 and win._results[0][1]
+    out = Path(win._ok_outs[0])
+    assert out.exists() and out.stem.endswith("_edit")
+    assert probe(find_tool("ffprobe"), str(out)).duration == pytest.approx(2.0, abs=0.3)
+    assert win._tmp_dir is None
+    assert not [p for p in out.parent.iterdir() if p.name.startswith(".swapeg-")]
+
+
+def test_chain_reports_bad_step_before_running(app, win, files, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    shown = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: shown.append(a[2]))
+    win._open_module("video")
+    win._add_files([str(files["v"])])
+    tp = win.tool_page
+    tp.panels[0]._edits["start"].setText("1")                      # 자르기는 올바르게
+    tp._on_chip_clicked(3)
+    tp.chips[3].set_checked(True)                                  # 속도/FPS 는 기본값(바꿀 게 없음)
+    tp._run()
+    assert shown and not win.runner.running                        # 아무 작업도 시작하지 않고 알림
+
+
+def test_player_loads_and_plays(app, win, files):
+    from ui import player
+    if not player.AVAILABLE:
+        pytest.skip("QtMultimedia 없음")
+    win._open_module("audio")
+    win._add_files([str(files["a"])])
+    tp = win.tool_page
+    assert tp.player is not None and tp.player.loaded and tp.controls.isVisible()
+    tp._toggle_play()
+    t = time.time()
+    while time.time() - t < 5 and tp.player.position_seconds() < 0.2:
+        app.processEvents()
+        time.sleep(0.02)
+    pos = tp.player.position_seconds()
+    tp.player.pause()
+    if pos < 0.2:
+        pytest.skip("이 환경에서는 소리 장치가 없어 재생 위치가 움직이지 않음")
+    assert tp.range._play is not None                              # 재생 위치선이 따라 움직인다
+    win._reset()                                                   # 화면을 떠나면 파일을 놓아 준다
+    assert not tp.player.loaded

@@ -100,6 +100,11 @@ def _draw(name: str, p: QPainter) -> None:
         p.drawEllipse(QPointF(12, 15), 6, 6)
         p.drawLine(QPointF(12, 3), QPointF(7.4, 11))
         p.drawLine(QPointF(12, 3), QPointF(16.6, 11))
+    elif name == "play":
+        p.drawPath(_path((8, 5), (19, 12), (8, 19), close=True))
+    elif name == "pause":
+        p.drawLine(QPointF(9, 5.5), QPointF(9, 18.5))
+        p.drawLine(QPointF(15, 5.5), QPointF(15, 18.5))
     elif name in ("reset", "rotate"):
         p.drawArc(QRectF(5, 5, 14, 14), 40 * 16, 280 * 16)
         p.drawPath(_path((17.5, 3.5), (17.5, 8), (13, 8)))
