@@ -1,4 +1,4 @@
-__version__ = "0.1.2"
+__version__ = "1.0.0"
 APP_NAME = "Swapeg"
 REPO_URL = "https://github.com/FORMAT-Hyun/swapeg"
 RELEASES_URL = REPO_URL + "/releases/latest"

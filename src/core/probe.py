@@ -16,6 +16,8 @@ class MediaInfo:
     height: int | None = None
     vcodec: str | None = None
     acodec: str | None = None
+    fps: float | None = None
+    sample_rate: int | None = None
 
     def summary(self) -> str:
         parts = []
@@ -30,6 +32,15 @@ class MediaInfo:
             h, m = divmod(m, 60)
             parts.append(f"{h}:{m:02d}:{s:02d}")
         return " · ".join(parts) or tr("정보 없음")
+
+
+def _fps(text: str | None) -> float | None:
+    try:
+        a, _, b = (text or "").partition("/")
+        v = float(a) / float(b or 1)
+        return v if v > 0 else None
+    except (ValueError, ZeroDivisionError):
+        return None
 
 
 def probe(ffprobe: str, path: str) -> MediaInfo:
@@ -54,6 +65,11 @@ def probe(ffprobe: str, path: str) -> MediaInfo:
                 continue
             info.vcodec = st.get("codec_name")
             info.width, info.height = st.get("width"), st.get("height")
+            info.fps = _fps(st.get("avg_frame_rate") or st.get("r_frame_rate"))
         elif st.get("codec_type") == "audio" and info.acodec is None:
             info.acodec = st.get("codec_name")
+            try:
+                info.sample_rate = int(st.get("sample_rate"))
+            except (TypeError, ValueError):
+                pass
     return info

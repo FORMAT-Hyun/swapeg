@@ -269,18 +269,29 @@ def _audio(ffmpeg, src, out, target, info) -> list[str]:
 _FLATTEN = "split=2[bg][fg];[bg]drawbox=c=white@1:replace=1:t=fill[bg];[bg][fg]overlay=format=auto,format=rgb24"
 
 
+def image_codec_opts(target: str) -> list[str]:
+    """이미지 형식별 인코딩 옵션 (필터는 제외)."""
+    if target in ("jpg", "jpeg"):
+        return ["-q:v", "1", "-pix_fmt", "yuvj444p"]
+    if target == "webp":
+        return ["-lossless", "1", "-compression_level", "6"]
+    if target == "png":
+        return ["-compression_level", "9"]
+    if target == "avif":
+        return ["-crf", "0"]
+    return []
+
+
+_GIF_PALETTE = "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"   # 256색 팔레트를 이미지에 맞춰 생성
+_ICO_SCALE = "scale='min(256,iw)':'min(256,ih)':force_original_aspect_ratio=decrease"
+
+
 def _image(ffmpeg, src, out, target) -> list[str]:
     args = [ffmpeg, *_BASE, "-i", src, "-frames:v", "1", "-update", "1"]
     if target in ("jpg", "jpeg"):
-        args += ["-filter_complex", _FLATTEN, "-q:v", "1", "-pix_fmt", "yuvj444p"]
-    elif target == "webp":
-        args += ["-lossless", "1", "-compression_level", "6"]
-    elif target == "png":
-        args += ["-compression_level", "9"]
-    elif target == "gif":  # 256색 팔레트를 이미지에 맞춰 만들어 색 손실을 최소화
-        args += ["-filter_complex", "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"]
+        args += ["-filter_complex", _FLATTEN]
+    elif target == "gif":
+        args += ["-filter_complex", _GIF_PALETTE]
     elif target == "ico":
-        args += ["-vf", "scale='min(256,iw)':'min(256,ih)':force_original_aspect_ratio=decrease"]
-    elif target == "avif":
-        args += ["-crf", "0"]
-    return args + [out]
+        args += ["-vf", _ICO_SCALE]
+    return args + image_codec_opts(target) + [out]

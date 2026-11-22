@@ -35,7 +35,7 @@ class AboutDialog(QDialog):
         head.addStretch(1)
         v.addLayout(head)
 
-        desc = QLabel(tr("파일을 넣고, 형식을 고르고, 변환만 누르면 끝나는 ffmpeg 변환기입니다. 화질은 원본 그대로 유지합니다."))
+        desc = QLabel(tr("동영상, 음악, 사진을 변환하고 자르고 합치는 ffmpeg 도구 모음입니다. 화질은 원본 그대로 유지합니다."))
         desc.setWordWrap(True)
         v.addWidget(desc)
 

@@ -41,6 +41,35 @@ QLabel#Title {{ font-size: 18pt; font-weight: 700; color: {GREEN}; }}
 QFrame#Preview {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
 QLabel#PreviewImg {{ background: {SURFACE2}; border-radius: 8px; color: {MUTED}; font-size: 11pt; }}
 QLabel#PreviewName {{ font-weight: 600; }}
+QLabel#ToolTitle {{ font-size: 15pt; font-weight: 700; color: {GREEN}; }}
+QLabel#CardTitle {{ font-size: 14pt; font-weight: 700; }}
+QLabel#FieldLabel {{ color: {MUTED}; font-size: 9pt; }}
+QPushButton[card="true"] {{
+    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 16px; text-align: left;
+}}
+QPushButton[card="true"]:hover {{ border-color: {ACCENT}; background: {ACCENT_SOFT}; }}
+QPushButton[tool="true"] {{
+    background: {BG}; border: 1px solid {BORDER_STRONG}; border-radius: 16px; padding: 6px 14px;
+}}
+QPushButton[tool="true"]:hover {{ background: {GREEN_SOFT}; border-color: {GREEN}; }}
+QPushButton[tool="true"]:checked {{ background: {ACCENT}; border-color: {ACCENT}; color: {ON_ACCENT}; }}
+QPushButton[tool="true"][convert="true"] {{ border-style: dashed; color: {GREEN}; }}
+QPushButton[seg="true"] {{
+    background: {BG}; border: 1px solid {BORDER_STRONG}; border-radius: 10px; padding: 4px 12px;
+}}
+QPushButton[seg="true"]:hover {{ border-color: {GREEN}; }}
+QPushButton[seg="true"]:checked {{
+    background: {GREEN_SOFT}; border-color: {GREEN}; color: {GREEN};
+}}
+QPushButton[posbtn="true"] {{ background: {BG}; border: 1px solid {BORDER_STRONG}; border-radius: 5px; padding: 0; }}
+QPushButton[posbtn="true"]:checked {{ background: {ACCENT}; border-color: {ACCENT}; }}
+QPushButton[fmt="true"][compact="true"] {{ padding: 5px 14px; min-width: 0; font-size: 10pt; font-weight: 500; }}
+QListWidget {{ background: {BG}; border: 1px solid {BORDER}; border-radius: 10px; outline: none; }}
+QListWidget::item {{ padding: 6px 8px; border-radius: 6px; }}
+QListWidget::item:selected {{ background: {ACCENT_SOFT}; color: {TEXT}; }}
+QSlider::groove:horizontal {{ height: 6px; background: {SURFACE2}; border-radius: 3px; }}
+QSlider::sub-page:horizontal {{ background: {ACCENT}; border-radius: 3px; }}
+QSlider::handle:horizontal {{ width: 16px; height: 16px; margin: -5px 0; border-radius: 8px; background: {GREEN}; }}
 QLabel#SectionLabel {{ color: {GREEN}; font-weight: 600; font-size: 10pt; }}
 QLabel#Error {{ color: #d64545; }}
 QLabel#BigTitle {{ font-size: 20pt; font-weight: 700; color: {GREEN}; }}

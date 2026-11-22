@@ -69,7 +69,38 @@ def _draw(name: str, p: QPainter) -> None:
         p.drawPath(_path((4, 15), (4, 20), (20, 20), (20, 15)))
     elif name == "check":
         p.drawPath(_path((5, 12.5), (10, 17.5), (19, 7)))
-    elif name == "reset":
+    elif name == "scissors":
+        p.drawEllipse(QPointF(6, 6.5), 2.6, 2.6)
+        p.drawEllipse(QPointF(6, 17.5), 2.6, 2.6)
+        p.drawLine(QPointF(8.2, 8), QPointF(20, 17.5))
+        p.drawLine(QPointF(8.2, 16), QPointF(20, 6.5))
+    elif name == "stack":
+        p.drawPath(_path((12, 4), (21, 9), (12, 14), (3, 9), close=True))
+        p.drawPath(_path((3, 13), (12, 18), (21, 13)))
+        p.drawPath(_path((3, 17), (12, 22), (21, 17)))
+    elif name == "aspect":
+        p.drawRoundedRect(QRectF(3, 5, 18, 14), 2.5, 2.5)
+        p.drawRoundedRect(QRectF(7.5, 9, 6, 6), 1.2, 1.2)
+    elif name == "gauge":
+        p.drawArc(QRectF(3, 6, 18, 18), 0, 180 * 16)
+        p.drawLine(QPointF(12, 15), QPointF(16.5, 10))
+        p.drawLine(QPointF(3, 15), QPointF(21, 15))
+    elif name == "volume":
+        p.drawPath(_path((4, 10), (8, 10), (13, 6), (13, 18), (8, 14), (4, 14), close=True))
+        p.drawArc(QRectF(11, 8, 8, 8), -60 * 16, 120 * 16)
+    elif name == "subtitles":
+        p.drawRoundedRect(QRectF(3, 5, 18, 14), 2.5, 2.5)
+        p.drawLine(QPointF(7, 11), QPointF(11, 11))
+        p.drawLine(QPointF(13, 11), QPointF(17, 11))
+        p.drawLine(QPointF(7, 15), QPointF(14, 15))
+    elif name == "crop":
+        p.drawPath(_path((6, 2), (6, 18), (22, 18)))
+        p.drawPath(_path((2, 6), (18, 6), (18, 22)))
+    elif name == "drop":
+        p.drawEllipse(QPointF(12, 15), 6, 6)
+        p.drawLine(QPointF(12, 3), QPointF(7.4, 11))
+        p.drawLine(QPointF(12, 3), QPointF(16.6, 11))
+    elif name in ("reset", "rotate"):
         p.drawArc(QRectF(5, 5, 14, 14), 40 * 16, 280 * 16)
         p.drawPath(_path((17.5, 3.5), (17.5, 8), (13, 8)))
 

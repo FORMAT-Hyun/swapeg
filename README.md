@@ -1,20 +1,27 @@
 # Swapeg
 
-**Drop a file, pick a format, convert.** Swapeg is a simple Windows app that converts video, audio and images with FFmpeg - no commands, no settings maze, and the original quality is kept.
+**Your videos, music and photos - convert, trim, merge, resize and more.** Swapeg is a friendly Windows app powered by FFmpeg. No commands, no settings maze, and your original quality is kept.
 
-![Swapeg - pick a format](docs/images/pick.png)
+![Swapeg home screen](docs/images/home.png)
 
-## Features
+## What you can do
 
-- **Three steps**: drop your files, click the format you want, press Convert.
-- **Original quality by default**: when the new format can hold the original streams, Swapeg copies them without re-encoding (lossless and fast). Otherwise it re-encodes at visually lossless settings and keeps the resolution and frame rate.
-- **54 output formats**: 20 video, 18 audio and 17 image (GIF is both a video and an image format). Input can be anything FFmpeg can read.
-- **Preview** of the source file before converting and of the result when it is done.
-- **Batch conversion** with an overall progress bar and a Cancel button.
-- **Search box** to find a format quickly (try `mp3`, `video` or `image`).
-- **English and Korean interface** - follows your Windows language by default and can be switched in Settings.
-- **Settings** for the save location, quality level, language and what happens after conversion.
-- **FFmpeg is set up for you**: if it is missing, Swapeg downloads it on first run and verifies its checksum.
+Pick a module on the start screen, or simply drop your files anywhere - Swapeg opens the right module for you.
+
+| Module | Tools |
+|---|---|
+| **Convert format** | Convert video, audio and images between 54 formats, extract the sound from a video, make animated GIFs. |
+| **Video** | **Trim** - **Merge** - **Size / rotate** (resolution, rotate, flip, crop) - **Speed / FPS** - **Sound** (remove, replace, volume) - **Subtitles** (burn in, add as a track, remove) |
+| **Music** | **Trim** (with fade in/out) - **Merge** (direct, 1 second gap or crossfade) - **Volume** (with loudness normalizing) - **Speed** (keep or change the pitch) |
+| **Photo** | **Resize** - **Rotate / flip** - **Crop** - **Watermark** (position, size, opacity) |
+
+## Highlights
+
+- **Original quality by default.** When a format can hold the original streams, Swapeg copies them without re-encoding (lossless and fast). Otherwise it re-encodes at visually lossless settings and keeps the resolution and frame rate.
+- **See what you are editing.** Video and photo previews, a waveform for music, and draggable handles to pick the part you want to keep.
+- **Batch friendly.** Drop many files and apply the same tool to all of them (merge combines them into one).
+- **English and Korean interface.** Follows your Windows language and can be switched in Settings.
+- **FFmpeg is set up for you.** If it is missing, Swapeg downloads it on first run and verifies its checksum.
 
 ## Download and install
 
@@ -34,13 +41,53 @@ Get the latest version from the [Releases page](https://github.com/FORMAT-Hyun/s
 
 If FFmpeg is not found, Swapeg asks whether to download it (about 100 MB, from gyan.dev). Click **Yes**. It is checked against its published SHA-256 checksum and saved in the `bin` folder next to the app. You can also point Swapeg to an existing FFmpeg in **Settings**.
 
+### Updating
+
+Download the newest `Setup.exe` and run it. It installs over your current version and keeps your settings.
+
 ## How to use
 
-1. **Add files.** Drag them anywhere onto the window, or click the drop area to browse. You can add many files at once.
-2. **Pick a format.** The formats that make sense for your files are shown as boxes, grouped into Video, Audio and Image. Use the search box to narrow them down. Your last choice is remembered.
-3. **Press Convert.** A progress bar shows the status. When it finishes you get a preview of the result and buttons to open the folder or convert something else.
+1. **Choose a module** on the start screen, or **drop your files** onto the window. Dropping video opens Video, music opens Music, photos open Photo, and mixed files open Convert format.
+2. **Pick a tool** from the row of buttons and set its options. The first button, *Convert format*, jumps to the format converter at any time.
+3. **Press the action button** (for example *Start trimming*). A progress bar appears; when it is done you get a preview of the result and buttons to open the folder, keep editing the same files, or start over.
 
-By default the converted file is saved next to the original with the same name and the new extension. If that name is taken, Swapeg adds `_converted` (or a number) - **your original files are never overwritten or deleted.**
+By default the result is saved next to the original with a short suffix (`_cut`, `_merged`, `_edit`, ...) and the same format. **Your original files are never overwritten or deleted.** Use **Save as** at the bottom to pick another format.
+
+### Video
+
+![Video module](docs/images/video.png)
+
+- **Trim** - drag the two handles under the preview, or type the start and end time (`90`, `1:30`, `0:01:30`). *Trim fast without re-encoding* is instant but cuts at the nearest keyframe.
+- **Merge** - add several videos, drag them into order. Everything is matched to the size of the first video, and clips without sound get silence.
+- **Size / rotate** - 1080p, 720p or 480p, rotate 90/180/270, flip, and crop to 1:1, 4:3, 16:9 or an exact area.
+- **Speed / FPS** - 0.5x to 4x (the sound follows), or change the frame rate.
+- **Sound** - remove it, replace it with another audio file, or change the volume.
+- **Subtitles** - burn an `.srt`, `.ass` or `.vtt` file into the picture, add it as a subtitle track (MP4, MKV, MOV, WebM) or remove existing subtitles.
+
+### Music
+
+![Music module](docs/images/music.png)
+
+- **Trim** - drag the handles on the waveform; optional fade in and fade out.
+- **Merge** - join tracks directly, with a 1 second gap, or with a 2 second crossfade.
+- **Volume** - from 0% to 300%, plus *Normalize loudness* for even playback.
+- **Speed** - 0.5x to 2x, keeping the pitch or letting it change like a record.
+- Video files can be used too - Swapeg works on their sound.
+
+### Photo
+
+![Photo module](docs/images/photo.png)
+
+- **Resize** - quick sizes (50%, long side 1920 or 1280) or an exact width and height with the ratio locked or free.
+- **Rotate / flip** - 90, 180 or 270 degrees, horizontal or vertical flip.
+- **Crop** - a dashed box on the preview shows the area for 1:1, 4:3, 16:9 or custom numbers.
+- **Watermark** - choose a logo, one of nine positions, its size and opacity.
+
+### Convert format
+
+![Convert format](docs/images/pick.png)
+
+Drop files, click the format you want, and press *Convert*. The formats that make sense for your files are shown as boxes; use the search box to find one quickly (try `mp3`, `video` or `image`).
 
 ![Converting](docs/images/convert.png)
 
@@ -52,13 +99,7 @@ By default the converted file is saved next to the original with the same name a
 | Audio | MP3, WAV, FLAC, M4A, AAC, OGG, OGA, OPUS, WMA, AIFF, AIF, AC3, MP2, MKA, AU, CAF, WV, TTA |
 | Image | PNG, JPG, JPEG, WebP, GIF, BMP, TIFF, TIF, ICO, TGA, PPM, JP2, PCX, SGI, QOI, EXR, AVIF |
 
-What you can convert to depends on what you drop in:
-
-- **Video files** can become other video formats, an animated GIF, or just the audio track (any audio format).
-- **Audio files** can become other audio formats.
-- **Image files** can become other image formats, including a still GIF.
-- **GIF files** can also become a still image (the first frame).
-- The file's own format is not offered (an MP4 is never converted to MP4).
+Input can be anything FFmpeg can read. In *Convert format*, the file's own format is not offered (an MP4 is never converted to MP4).
 
 ## Settings
 
@@ -72,20 +113,15 @@ Open **Settings** (top right) to change:
 
 ![Settings](docs/images/settings.png)
 
-## About and updates
-
-Click **About** (top right) to see the installed version and open the [GitHub repository](https://github.com/FORMAT-Hyun/swapeg), the page for new versions, or the issue tracker to report a problem or suggest something.
-
-![About](docs/images/about.png)
-
-To update, download the newest `Setup.exe` from the [Releases page](https://github.com/FORMAT-Hyun/swapeg/releases/latest) and run it - it installs over your current version and keeps your settings.
+Click **About** for the version and links to the [GitHub repository](https://github.com/FORMAT-Hyun/swapeg), the newest release and the issue tracker.
 
 ## Notes and limits
 
-- Converting to a very different format may re-encode, which takes longer for large videos. Copying (no re-encode) is near-instant.
+- Tools that change the picture (resize, rotate, crop, speed, subtitles, merge) re-encode the video, which takes longer for large files. Quality is kept high (see the *Quality* setting).
 - Transparent images saved as JPG get a white background, because JPG has no transparency.
-- GIF output is limited to 720 px wide and 15 fps to keep files a sensible size.
-- Some rare codecs or damaged files cannot be converted; the result screen shows FFmpeg's error message for the file.
+- GIF output from videos is limited to 720 px wide and 15 fps to keep files a sensible size.
+- Burned-in subtitles use FFmpeg's default font. Use *Add as subtitle track* if you want players to style them.
+- Some rare codecs or damaged files cannot be processed; the result screen shows FFmpeg's error message for the file.
 
 ## Uninstall
 
